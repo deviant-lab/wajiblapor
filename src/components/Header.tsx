@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useRealtimeClock } from "@/hooks/useRealtimeClock";
 import { formatJam, formatTanggalLengkapID } from "@/utils/dateUtils";
-import { Moon, Sun, ShieldCheck } from "lucide-react";
+import { Moon, Sun, ShieldCheck, ClipboardList, History, BarChart3 } from "lucide-react";
 
 export function Header() {
   const now = useRealtimeClock();
@@ -18,6 +19,10 @@ export function Header() {
     localStorage.setItem("wl-theme", dark ? "dark" : "light");
   }, [dark]);
 
+  const navItem =
+    "inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-sm border border-transparent hover:bg-header-foreground/10 transition-colors";
+  const navActive = "bg-header-foreground/15 border-header-foreground/20 font-medium";
+
   return (
     <header className="bg-header text-header-foreground border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
@@ -27,16 +32,16 @@ export function Header() {
           </div>
           <div className="min-w-0">
             <h1 className="text-base sm:text-lg font-semibold tracking-tight truncate">
-              Sistem Wajib Lapor Digital
+              SIWAJAR
             </h1>
             <p className="text-xs text-header-foreground/70 truncate">
-              Pelayanan Administrasi Klien Pemasyarakatan
+              Sistem Wajib Lapor Digital
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:block text-right leading-tight">
+        <div className="flex items-center gap-2">
+          <div className="hidden sm:block text-right leading-tight mr-2">
             <div className="font-mono text-xl sm:text-2xl tabular-nums">{formatJam(now)}</div>
             <div className="text-xs text-header-foreground/70">{formatTanggalLengkapID(now)}</div>
           </div>
@@ -50,10 +55,21 @@ export function Header() {
           </button>
         </div>
       </div>
-      <div className="sm:hidden border-t border-header-foreground/10 px-4 py-2 flex items-center justify-between text-sm">
-        <span className="text-header-foreground/70">{formatTanggalLengkapID(now)}</span>
-        <span className="font-mono tabular-nums">{formatJam(now)}</span>
-      </div>
+
+      <nav className="border-t border-header-foreground/10 px-2 sm:px-6 max-w-7xl mx-auto flex items-center gap-1 overflow-x-auto">
+        <Link to="/" activeOptions={{ exact: true }} className={navItem} activeProps={{ className: `${navItem} ${navActive}` }}>
+          <ClipboardList className="h-4 w-4" /> Input Lapor
+        </Link>
+        <Link to="/history" className={navItem} activeProps={{ className: `${navItem} ${navActive}` }}>
+          <History className="h-4 w-4" /> Riwayat Harian
+        </Link>
+        <Link to="/dashboard" className={navItem} activeProps={{ className: `${navItem} ${navActive}` }}>
+          <BarChart3 className="h-4 w-4" /> Dashboard
+        </Link>
+        <div className="ml-auto sm:hidden text-xs py-2 pr-2 text-header-foreground/70 font-mono tabular-nums">
+          {formatJam(now)}
+        </div>
+      </nav>
     </header>
   );
 }
