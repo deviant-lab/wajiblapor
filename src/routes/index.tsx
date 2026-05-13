@@ -12,8 +12,8 @@ export const Route = createFileRoute("/")({
   component: Index,
   head: () => ({
     meta: [
-      { title: "Sistem Wajib Lapor Digital" },
-      { name: "description", content: "Aplikasi pelayanan administrasi wajib lapor digital — input cepat berbasis keyboard." },
+      { title: "SIWAJAR — Sistem Wajib Lapor Digital" },
+      { name: "description", content: "SIWAJAR: aplikasi pelayanan administrasi wajib lapor digital — input cepat berbasis keyboard." },
     ],
   }),
 });
@@ -40,7 +40,7 @@ function Index() {
         <ReportTable data={data} onEdit={setEditing} onDelete={handleDelete} />
       </main>
       <footer className="border-t border-border py-3 text-center text-xs text-muted-foreground">
-        Sistem Administrasi Wajib Lapor · v1.0
+        SIWAJAR · Sistem Wajib Lapor Digital · v1.0
       </footer>
     </div>
   );
