@@ -76,10 +76,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "description", content: "SIWAJAR: aplikasi pelayanan administrasi wajib lapor digital." },
       { name: "author", content: "SIWAJAR" },
       { property: "og:title", content: "SIWAJAR — Sistem Wajib Lapor Digital" },
-      { property: "og:description", content: "Aplikasi pelayanan administrasi wajib lapor digital." },
+      { property: "og:description", content: "SIWAJAR: aplikasi pelayanan administrasi wajib lapor digital." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "SIWAJAR — Sistem Wajib Lapor Digital" },
+      { name: "twitter:description", content: "SIWAJAR: aplikasi pelayanan administrasi wajib lapor digital." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/ff330a7d-c8c7-43b7-888a-07bdeaec928e/id-preview-6f153c5b--0323cee2-8964-4600-ad30-a318756b72b0.lovable.app-1778645586838.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/ff330a7d-c8c7-43b7-888a-07bdeaec928e/id-preview-6f153c5b--0323cee2-8964-4600-ad30-a318756b72b0.lovable.app-1778645586838.png" },
     ],
     links: [
       {
