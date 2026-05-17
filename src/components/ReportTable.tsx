@@ -3,17 +3,18 @@ import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import type { Laporan } from "@/services/laporanService";
 import { formatTanggalID } from "@/utils/dateUtils";
-import { Search, Download, Trash2, Pencil, Inbox, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Download, Trash2, Pencil, Inbox, ChevronLeft, ChevronRight, MapPin } from "lucide-react";
 
 interface Props {
   data: Laporan[];
   onEdit: (l: Laporan) => void;
   onDelete: (id: string) => void;
+  title?: string;
 }
 
 const PAGE_SIZE = 10;
 
-export function ReportTable({ data, onEdit, onDelete }: Props) {
+export function ReportTable({ data, onEdit, onDelete, title = "Data Wajib Lapor" }: Props) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -50,6 +51,8 @@ export function ReportTable({ data, onEdit, onDelete }: Props) {
       "Tanggal Lapor": formatTanggalID(d.tanggalLapor),
       "Tanggal Kembali": formatTanggalID(d.tanggalKembali),
       "Pembimbing Kemasyarakatan": d.pembimbing,
+      Latitude: d.geotag?.latitude ?? "",
+      Longitude: d.geotag?.longitude ?? "",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -63,7 +66,7 @@ export function ReportTable({ data, onEdit, onDelete }: Props) {
     <section className="bg-card text-card-foreground rounded-xl border border-border shadow-card">
       <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold">Data Wajib Lapor</h2>
+          <h2 className="text-base font-semibold">{title}</h2>
           <p className="text-xs text-muted-foreground">
             Total {data.length} entri{q && ` · ${filtered.length} hasil pencarian`}
           </p>
@@ -96,13 +99,14 @@ export function ReportTable({ data, onEdit, onDelete }: Props) {
               <Th className="w-36">Tanggal Lapor</Th>
               <Th className="w-36">Tanggal Kembali</Th>
               <Th>Pembimbing</Th>
+              <Th className="w-20">Geotag</Th>
               <Th className="w-28 text-center">Aksi</Th>
             </tr>
           </thead>
           <tbody>
             {pageData.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-16">
+                <td colSpan={9} className="py-16">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <Inbox className="h-10 w-10 opacity-50" />
                     <p className="text-sm">{q ? "Tidak ada data yang cocok dengan pencarian." : "Belum ada data wajib lapor."}</p>
@@ -119,6 +123,20 @@ export function ReportTable({ data, onEdit, onDelete }: Props) {
                   <Td>{formatTanggalID(d.tanggalLapor)}</Td>
                   <Td>{formatTanggalID(d.tanggalKembali)}</Td>
                   <Td>{d.pembimbing}</Td>
+                  <Td>
+                    {d.geotag ? (
+                      <a
+                        href={`https://www.google.com/maps?q=${d.geotag.latitude},${d.geotag.longitude}`}
+                        target="_blank" rel="noreferrer"
+                        title={`${d.geotag.latitude.toFixed(5)}, ${d.geotag.longitude.toFixed(5)}`}
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                      >
+                        <MapPin className="h-3 w-3" /> Lihat
+                      </a>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </Td>
                   <Td>
                     <div className="flex items-center justify-center gap-1">
                       <button onClick={() => onEdit(d)} title="Edit"
