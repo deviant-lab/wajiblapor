@@ -15,7 +15,7 @@ export const Route = createFileRoute("/dashboard")({
   component: DashboardPage,
   head: () => ({
     meta: [
-      { title: "Dashboard Statistik — SIWAJAR" },
+      { title: "Dashboard Statistik — SIPADU" },
       { name: "description", content: "Statistik dan grafik wajib lapor digital." },
     ],
   }),
@@ -223,7 +223,7 @@ function DashboardPage() {
         </div>
       </main>
       <footer className="border-t border-border py-3 text-center text-xs text-muted-foreground">
-        SIWAJAR · Sistem Wajib Lapor Digital
+        SIPADU · Sistem Informasi Pelayanan dan Buku Tamu Terpadu
       </footer>
     </div>
   );

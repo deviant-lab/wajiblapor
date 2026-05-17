@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useRealtimeClock } from "@/hooks/useRealtimeClock";
 import { formatJam, formatTanggalLengkapID } from "@/utils/dateUtils";
-import { Moon, Sun, ShieldCheck, ClipboardList, History, BarChart3 } from "lucide-react";
+import { Moon, Sun, Building2, Home, History, BarChart3 } from "lucide-react";
 
 export function Header() {
   const now = useRealtimeClock();
@@ -28,14 +28,14 @@ export function Header() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="h-10 w-10 rounded-md bg-header-foreground/10 flex items-center justify-center shrink-0">
-            <ShieldCheck className="h-6 w-6" />
+            <Building2 className="h-6 w-6" />
           </div>
           <div className="min-w-0">
             <h1 className="text-base sm:text-lg font-semibold tracking-tight truncate">
-              SIWAJAR
+              SIPADU
             </h1>
             <p className="text-xs text-header-foreground/70 truncate">
-              Sistem Wajib Lapor Digital
+              Sistem Informasi Pelayanan dan Buku Tamu Terpadu
             </p>
           </div>
         </div>
@@ -58,7 +58,7 @@ export function Header() {
 
       <nav className="border-t border-header-foreground/10 px-2 sm:px-6 max-w-7xl mx-auto flex items-center gap-1 overflow-x-auto">
         <Link to="/" activeOptions={{ exact: true }} className={navItem} activeProps={{ className: `${navItem} ${navActive}` }}>
-          <ClipboardList className="h-4 w-4" /> Input Lapor
+          <Home className="h-4 w-4" /> Beranda
         </Link>
         <Link to="/history" className={navItem} activeProps={{ className: `${navItem} ${navActive}` }}>
           <History className="h-4 w-4" /> Riwayat Harian

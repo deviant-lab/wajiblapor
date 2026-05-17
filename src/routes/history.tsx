@@ -18,7 +18,7 @@ export const Route = createFileRoute("/history")({
   component: HistoryPage,
   head: () => ({
     meta: [
-      { title: "Riwayat Harian — SIWAJAR" },
+      { title: "Riwayat Harian — SIPADU" },
       { name: "description", content: "Riwayat kunjungan wajib lapor harian klien." },
     ],
   }),
@@ -286,7 +286,7 @@ function HistoryPage() {
         </section>
       </main>
       <footer className="border-t border-border py-3 text-center text-xs text-muted-foreground">
-        SIWAJAR · Sistem Wajib Lapor Digital
+        SIPADU · Sistem Informasi Pelayanan dan Buku Tamu Terpadu
       </footer>
     </div>
   );

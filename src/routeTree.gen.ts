@@ -9,10 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TamuRouteImport } from './routes/tamu'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LaporDewasaRouteImport } from './routes/lapor.dewasa'
+import { Route as LaporAnakRouteImport } from './routes/lapor.anak'
 
+const TamuRoute = TamuRouteImport.update({
+  id: '/tamu',
+  path: '/tamu',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HistoryRoute = HistoryRouteImport.update({
   id: '/history',
   path: '/history',
@@ -28,39 +36,87 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LaporDewasaRoute = LaporDewasaRouteImport.update({
+  id: '/lapor/dewasa',
+  path: '/lapor/dewasa',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LaporAnakRoute = LaporAnakRouteImport.update({
+  id: '/lapor/anak',
+  path: '/lapor/anak',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/history': typeof HistoryRoute
+  '/tamu': typeof TamuRoute
+  '/lapor/anak': typeof LaporAnakRoute
+  '/lapor/dewasa': typeof LaporDewasaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/history': typeof HistoryRoute
+  '/tamu': typeof TamuRoute
+  '/lapor/anak': typeof LaporAnakRoute
+  '/lapor/dewasa': typeof LaporDewasaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/history': typeof HistoryRoute
+  '/tamu': typeof TamuRoute
+  '/lapor/anak': typeof LaporAnakRoute
+  '/lapor/dewasa': typeof LaporDewasaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dashboard' | '/history'
+  fullPaths:
+    | '/'
+    | '/dashboard'
+    | '/history'
+    | '/tamu'
+    | '/lapor/anak'
+    | '/lapor/dewasa'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dashboard' | '/history'
-  id: '__root__' | '/' | '/dashboard' | '/history'
+  to:
+    | '/'
+    | '/dashboard'
+    | '/history'
+    | '/tamu'
+    | '/lapor/anak'
+    | '/lapor/dewasa'
+  id:
+    | '__root__'
+    | '/'
+    | '/dashboard'
+    | '/history'
+    | '/tamu'
+    | '/lapor/anak'
+    | '/lapor/dewasa'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
   HistoryRoute: typeof HistoryRoute
+  TamuRoute: typeof TamuRoute
+  LaporAnakRoute: typeof LaporAnakRoute
+  LaporDewasaRoute: typeof LaporDewasaRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tamu': {
+      id: '/tamu'
+      path: '/tamu'
+      fullPath: '/tamu'
+      preLoaderRoute: typeof TamuRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/history': {
       id: '/history'
       path: '/history'
@@ -82,6 +138,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/lapor/dewasa': {
+      id: '/lapor/dewasa'
+      path: '/lapor/dewasa'
+      fullPath: '/lapor/dewasa'
+      preLoaderRoute: typeof LaporDewasaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lapor/anak': {
+      id: '/lapor/anak'
+      path: '/lapor/anak'
+      fullPath: '/lapor/anak'
+      preLoaderRoute: typeof LaporAnakRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +159,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
   HistoryRoute: HistoryRoute,
+  TamuRoute: TamuRoute,
+  LaporAnakRoute: LaporAnakRoute,
+  LaporDewasaRoute: LaporDewasaRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
