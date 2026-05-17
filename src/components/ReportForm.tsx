@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { addOneMonthClamped, toISODate } from "@/utils/dateUtils";
-import type { Laporan, JenisKelamin, StatusProgram } from "@/services/laporanService";
+import type { Laporan, JenisKelamin, StatusProgram, KategoriLapor } from "@/services/laporanService";
 import { generateId } from "@/services/laporanService";
-import { Loader2, Save, RotateCcw, Keyboard } from "lucide-react";
+import { useGeolocation } from "@/hooks/useGeolocation";
+import { Loader2, Save, RotateCcw, Keyboard, MapPin, RefreshCw, AlertTriangle } from "lucide-react";
 
-type FormState = Omit<Laporan, "id" | "createdAt">;
+type FormState = Omit<Laporan, "id" | "createdAt" | "geotag">;
 
-function emptyForm(): FormState {
+function emptyForm(kategori: KategoriLapor): FormState {
   const today = toISODate(new Date());
   return {
+    kategori,
     namaKlien: "",
     tanggalLahir: "",
     jenisKelamin: "Laki-laki",
@@ -24,29 +26,30 @@ function emptyForm(): FormState {
 }
 
 interface Props {
+  kategori: KategoriLapor;
   onSubmit: (data: Laporan) => void;
   editing: Laporan | null;
   onCancelEdit: () => void;
   onUpdate: (data: Laporan) => void;
+  onAfterSave?: () => void;
 }
 
-export function ReportForm({ onSubmit, editing, onCancelEdit, onUpdate }: Props) {
-  const [form, setForm] = useState<FormState>(emptyForm());
+export function ReportForm({ kategori, onSubmit, editing, onCancelEdit, onUpdate, onAfterSave }: Props) {
+  const [form, setForm] = useState<FormState>(emptyForm(kategori));
   const [submitting, setSubmitting] = useState(false);
   const firstFieldRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const { geotag, loading: geoLoading, error: geoError, refresh: refreshGeo } = useGeolocation(true);
 
-  useEffect(() => {
-    firstFieldRef.current?.focus();
-  }, []);
+  useEffect(() => { firstFieldRef.current?.focus(); }, []);
 
   useEffect(() => {
     if (editing) {
-      const { id: _i, createdAt: _c, ...rest } = editing;
-      setForm(rest);
+      const { id: _i, createdAt: _c, geotag: _g, ...rest } = editing;
+      setForm({ ...rest, kategori });
       firstFieldRef.current?.focus();
     }
-  }, [editing]);
+  }, [editing, kategori]);
 
   useEffect(() => {
     if (editing) return;
@@ -60,7 +63,7 @@ export function ReportForm({ onSubmit, editing, onCancelEdit, onUpdate }: Props)
     setForm((f) => ({ ...f, [key]: value }));
 
   const reset = () => {
-    setForm(emptyForm());
+    setForm(emptyForm(kategori));
     onCancelEdit();
     setTimeout(() => firstFieldRef.current?.focus(), 0);
   };
@@ -85,35 +88,29 @@ export function ReportForm({ onSubmit, editing, onCancelEdit, onUpdate }: Props)
     setSubmitting(true);
     await new Promise((r) => setTimeout(r, 200));
     if (editing) {
-      onUpdate({ ...editing, ...form });
-      toast.success("Data berhasil diperbarui");
+      onUpdate({ ...editing, ...form, geotag: editing.geotag ?? geotag ?? null });
+      toast.success("Informasi sudah disimpan");
     } else {
-      const data: Laporan = { id: generateId(), createdAt: new Date().toISOString(), ...form };
+      const data: Laporan = {
+        id: generateId(),
+        createdAt: new Date().toISOString(),
+        ...form,
+        geotag: geotag ?? null,
+      };
       onSubmit(data);
-      toast.success("Data wajib lapor berhasil disimpan");
+      toast.success("Informasi sudah disimpan");
     }
     setSubmitting(false);
-    setForm(emptyForm());
+    setForm(emptyForm(kategori));
     onCancelEdit();
-    setTimeout(() => firstFieldRef.current?.focus(), 0);
+    onAfterSave?.();
   };
 
-  const handleFormSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    submit();
-  };
+  const handleFormSubmit = (e: FormEvent) => { e.preventDefault(); submit(); };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      reset();
-      return;
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-      e.preventDefault();
-      submit();
-      return;
-    }
+    if (e.key === "Escape") { e.preventDefault(); reset(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); submit(); return; }
     if (e.key === "Enter") {
       const target = e.target as HTMLElement;
       if (target.tagName === "TEXTAREA" && e.shiftKey) return;
@@ -128,18 +125,13 @@ export function ReportForm({ onSubmit, editing, onCancelEdit, onUpdate }: Props)
         focusables[idx + 1].focus();
         const next = focusables[idx + 1] as HTMLInputElement;
         if (next.select) try { next.select(); } catch {}
-      } else {
-        submit();
-      }
+      } else submit();
     }
   };
 
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        submit();
-      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); submit(); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -153,13 +145,17 @@ export function ReportForm({ onSubmit, editing, onCancelEdit, onUpdate }: Props)
     if (form.tanggalKembali !== tanggalKembaliComputed) set("tanggalKembali", tanggalKembaliComputed);
   }, [tanggalKembaliComputed]);
 
+  const labelKategori = kategori === "anak" ? "Anak" : "Dewasa";
+
   return (
     <section className="bg-card text-card-foreground rounded-xl border border-border shadow-card">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-base font-semibold">{editing ? "Edit Data Wajib Lapor" : "Form Input Wajib Lapor"}</h2>
+          <h2 className="text-base font-semibold">
+            {editing ? `Edit Data Wajib Lapor ${labelKategori}` : `Form Input Wajib Lapor ${labelKategori}`}
+          </h2>
           <p className="text-xs text-muted-foreground">
-            Tekan <kbd className="kbd">Enter</kbd> untuk pindah field, <kbd className="kbd">Ctrl</kbd>+<kbd className="kbd">S</kbd> untuk simpan, <kbd className="kbd">Esc</kbd> untuk reset.
+            Tekan <kbd className="kbd">Enter</kbd> pindah field, <kbd className="kbd">Ctrl</kbd>+<kbd className="kbd">S</kbd> simpan, <kbd className="kbd">Esc</kbd> reset.
           </p>
         </div>
         <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground">
@@ -222,6 +218,35 @@ export function ReportForm({ onSubmit, editing, onCancelEdit, onUpdate }: Props)
             onChange={(e) => set("pembimbing", e.target.value)} placeholder="Nama PK" autoComplete="off" />
         </Field>
 
+        {/* Geotagging */}
+        <div className="md:col-span-2 rounded-lg border border-border bg-muted/30 p-3 flex items-start gap-3">
+          <div className={`h-9 w-9 rounded-md inline-flex items-center justify-center shrink-0 ${
+            geotag ? "bg-success/15 text-success" : geoError ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
+          }`}>
+            {geoError ? <AlertTriangle className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium">Geotagging Lokasi Lapor</span>
+              {geoLoading && <span className="text-xs text-muted-foreground inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> mengambil…</span>}
+            </div>
+            {geotag ? (
+              <p className="text-xs text-muted-foreground mt-0.5 font-mono">
+                {geotag.latitude.toFixed(6)}, {geotag.longitude.toFixed(6)}
+                {geotag.accuracy ? ` · ±${Math.round(geotag.accuracy)}m` : ""}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {geoError ?? "Lokasi belum terdeteksi"}
+              </p>
+            )}
+          </div>
+          <button type="button" data-skip-enter onClick={refreshGeo}
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-border bg-card text-xs hover:bg-accent">
+            <RefreshCw className="h-3.5 w-3.5" /> Perbarui
+          </button>
+        </div>
+
         <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-2 border-t border-border">
           <button type="submit" disabled={submitting}
             className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 h-10 text-sm font-medium hover:opacity-90 disabled:opacity-60 transition-opacity">
@@ -242,27 +267,14 @@ export function ReportForm({ onSubmit, editing, onCancelEdit, onUpdate }: Props)
       </form>
 
       <style>{`
-        .input {
-          width: 100%;
-          height: 2.5rem;
-          padding: 0 0.75rem;
-          border-radius: 0.5rem;
-          border: 1px solid var(--color-input);
-          background-color: var(--color-card);
-          color: var(--color-card-foreground);
-          font-size: 0.9rem;
-          outline: none;
-          transition: border-color .15s, box-shadow .15s;
-        }
-        textarea.input { height: auto; padding: 0.5rem 0.75rem; }
+        .input { width:100%; height:2.5rem; padding:0 .75rem; border-radius:.5rem; border:1px solid var(--color-input);
+          background-color: var(--color-card); color: var(--color-card-foreground); font-size:.9rem; outline:none;
+          transition: border-color .15s, box-shadow .15s; }
+        textarea.input { height:auto; padding:.5rem .75rem; }
         .input:focus { border-color: var(--color-ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-ring) 20%, transparent); }
-        .kbd {
-          display: inline-flex; align-items: center; justify-content: center;
-          min-width: 1.4rem; padding: 0 0.3rem; height: 1.25rem;
-          border-radius: 0.25rem; border: 1px solid var(--color-border);
-          background: var(--color-muted); color: var(--color-foreground);
-          font-family: ui-monospace, monospace; font-size: 0.7rem;
-        }
+        .kbd { display:inline-flex; align-items:center; justify-content:center; min-width:1.4rem; padding:0 .3rem; height:1.25rem;
+          border-radius:.25rem; border:1px solid var(--color-border); background:var(--color-muted); color:var(--color-foreground);
+          font-family: ui-monospace, monospace; font-size:.7rem; }
       `}</style>
     </section>
   );
