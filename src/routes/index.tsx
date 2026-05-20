@@ -1,9 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Toaster } from "sonner";
 import { Header } from "@/components/Header";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { STORAGE_KEY, type Laporan, getKategori } from "@/services/laporanService";
-import { TAMU_STORAGE_KEY, type Tamu } from "@/services/tamuService";
+import { useLaporan } from "@/hooks/useLaporan";
+import { useTamu } from "@/hooks/useTamu";
+import { getKategori } from "@/services/laporanService";
 import { toISODate } from "@/utils/dateUtils";
 import { UserPlus, Baby, UserCheck, ArrowRight } from "lucide-react";
 
@@ -18,8 +18,8 @@ export const Route = createFileRoute("/")({
 });
 
 function Beranda() {
-  const [laporan] = useLocalStorage<Laporan[]>(STORAGE_KEY, []);
-  const [tamu] = useLocalStorage<Tamu[]>(TAMU_STORAGE_KEY, []);
+  const { data: laporan } = useLaporan();
+  const { data: tamu } = useTamu();
   const today = toISODate(new Date());
 
   const totalDewasa = laporan.filter((l) => getKategori(l) === "dewasa").length;
@@ -73,7 +73,7 @@ function Beranda() {
             <Link
               key={m.to}
               to={m.to}
-              className={`group relative overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-card hover:shadow-elevated transition-shadow p-5 flex flex-col gap-4`}
+              className="group relative overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-card hover:shadow-elevated transition-shadow p-5 flex flex-col gap-4"
             >
               <div className={`absolute inset-0 bg-gradient-to-br ${m.tone} opacity-60 pointer-events-none`} />
               <div className="relative flex items-start justify-between">

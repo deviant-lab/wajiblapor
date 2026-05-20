@@ -1,12 +1,12 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { Header } from "@/components/Header";
 import { ReportForm } from "@/components/ReportForm";
 import { ReportTable } from "@/components/ReportTable";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
-import type { Laporan } from "@/services/laporanService";
-import { STORAGE_KEY, getKategori } from "@/services/laporanService";
+import { useLaporan } from "@/hooks/useLaporan";
+import type { Laporan, LaporanInput } from "@/services/laporanService";
+import { getKategori } from "@/services/laporanService";
 import { ArrowLeft } from "lucide-react";
 
 export const Route = createFileRoute("/lapor/anak")({
@@ -20,15 +20,21 @@ export const Route = createFileRoute("/lapor/anak")({
 });
 
 function LaporAnak() {
-  const [data, setData] = useLocalStorage<Laporan[]>(STORAGE_KEY, []);
+  const { data, create, update, remove } = useLaporan();
   const [editing, setEditing] = useState<Laporan | null>(null);
   const navigate = useNavigate();
 
   const filtered = data.filter((l) => getKategori(l) === "anak");
 
-  const handleSubmit = (l: Laporan) => setData((prev) => [l, ...prev]);
-  const handleUpdate = (l: Laporan) => setData((prev) => prev.map((x) => (x.id === l.id ? l : x)));
-  const handleDelete = (id: string) => setData((prev) => prev.filter((x) => x.id !== id));
+  const handleCreate = async (input: LaporanInput) => {
+    try { await create(input); } catch (e) { toast.error("Gagal menyimpan data"); console.error(e); throw e; }
+  };
+  const handleUpdate = async (id: string, input: LaporanInput) => {
+    try { await update(id, input); } catch (e) { toast.error("Gagal memperbarui data"); console.error(e); throw e; }
+  };
+  const handleDelete = async (id: string) => {
+    try { await remove(id); } catch (e) { toast.error("Gagal menghapus data"); console.error(e); }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -41,7 +47,7 @@ function LaporAnak() {
         <ReportForm
           kategori="anak"
           editing={editing}
-          onSubmit={handleSubmit}
+          onCreate={handleCreate}
           onUpdate={handleUpdate}
           onCancelEdit={() => setEditing(null)}
           onAfterSave={() => navigate({ to: "/" })}
