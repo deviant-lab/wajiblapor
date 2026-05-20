@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { addOneMonthClamped, toISODate } from "@/utils/dateUtils";
-import type { Laporan, LaporanInput, JenisKelamin, StatusProgram, KategoriLapor } from "@/services/laporanService";
+import type { Laporan, JenisKelamin, StatusProgram, KategoriLapor } from "@/services/laporanService";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { Loader2, Save, RotateCcw, Keyboard, MapPin, RefreshCw, AlertTriangle } from "lucide-react";
 
@@ -26,14 +26,14 @@ function emptyForm(kategori: KategoriLapor): FormState {
 
 interface Props {
   kategori: KategoriLapor;
-  onCreate: (input: LaporanInput) => Promise<void>;
+  onSubmit: (data: Omit<Laporan, "id" | "createdAt">) => Promise<void>;
   editing: Laporan | null;
   onCancelEdit: () => void;
-  onUpdate: (id: string, input: LaporanInput) => Promise<void>;
+  onUpdate: (data: Laporan) => Promise<void>;
   onAfterSave?: () => void;
 }
 
-export function ReportForm({ kategori, onCreate, editing, onCancelEdit, onUpdate, onAfterSave }: Props) {
+export function ReportForm({ kategori, onSubmit, editing, onCancelEdit, onUpdate, onAfterSave }: Props) {
   const [form, setForm] = useState<FormState>(emptyForm(kategori));
   const [submitting, setSubmitting] = useState(false);
   const firstFieldRef = useRef<HTMLInputElement>(null);
@@ -79,24 +79,23 @@ export function ReportForm({ kategori, onCreate, editing, onCancelEdit, onUpdate
     for (const [k, label] of required) {
       if (!String(form[k]).trim()) {
         toast.error(`${label} wajib diisi`);
-        const el = formRef.current?.querySelector<HTMLElement>(`[name="${k}"]`);
-        el?.focus();
+        formRef.current?.querySelector<HTMLElement>(`[name="${k}"]`)?.focus();
         return;
       }
     }
+    
     setSubmitting(true);
     try {
       if (editing) {
-        await onUpdate(editing.id, { ...form, geotag: editing.geotag ?? geotag ?? null });
+        await onUpdate({ ...editing, ...form, geotag: editing.geotag ?? geotag ?? null });
       } else {
-        await onCreate({ ...form, geotag: geotag ?? null });
+        await onSubmit({ ...form, geotag: geotag ?? null });
       }
-      toast.success("Informasi sudah disimpan");
       setForm(emptyForm(kategori));
       onCancelEdit();
       onAfterSave?.();
-    } catch {
-      // error toast handled by caller
+    } catch (error) {
+      toast.error("Terjadi kesalahan saat menyimpan data");
     } finally {
       setSubmitting(false);
     }
@@ -214,7 +213,6 @@ export function ReportForm({ kategori, onCreate, editing, onCancelEdit, onUpdate
             onChange={(e) => set("pembimbing", e.target.value)} placeholder="Nama PK" autoComplete="off" />
         </Field>
 
-        {/* Geotagging */}
         <div className="md:col-span-2 rounded-lg border border-border bg-muted/30 p-3 flex items-start gap-3">
           <div className={`h-9 w-9 rounded-md inline-flex items-center justify-center shrink-0 ${
             geotag ? "bg-success/15 text-success" : geoError ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
