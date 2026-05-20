@@ -1,12 +1,13 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { Header } from "@/components/Header";
 import { ReportForm } from "@/components/ReportForm";
 import { ReportTable } from "@/components/ReportTable";
-import { useLaporan } from "@/hooks/useLaporan";
-import type { Laporan, LaporanInput } from "@/services/laporanService";
-import { getKategori } from "@/services/laporanService";
+import { fetchLaporan, addLaporan, type Laporan, getKategori } from "@/services/laporanService";
+import { addKunjungan } from "@/services/kunjunganService";
+import { formatJam } from "@/utils/dateUtils";
+import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft } from "lucide-react";
 
 export const Route = createFileRoute("/lapor/dewasa")({
@@ -20,20 +21,79 @@ export const Route = createFileRoute("/lapor/dewasa")({
 });
 
 function LaporDewasa() {
-  const { data, create, update, remove } = useLaporan();
+  const [data, setData] = useState<Laporan[]>([]);
   const [editing, setEditing] = useState<Laporan | null>(null);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    fetchLaporan().then(setData).catch(console.error);
+  }, []);
+
   const filtered = data.filter((l) => getKategori(l) === "dewasa");
 
-  const handleCreate = async (input: LaporanInput) => {
-    try { await create(input); } catch (e) { toast.error("Gagal menyimpan data"); console.error(e); throw e; }
+  const handleSubmit = async (l: Omit<Laporan, 'id' | 'createdAt'>) => {
+    try {
+      // 1. Simpan data klien baru
+      const inserted = await addLaporan(l);
+      
+      // 2. Otomatis catat ke history karena sudah geotagging
+      if (inserted && inserted.length > 0) {
+        const newId = inserted[0].id;
+        await addKunjungan({
+          laporanId: newId,
+          tanggal: l.tanggalLapor,
+          jam: formatJam(new Date()).slice(0, 5),
+          petugas: l.pembimbing,
+          catatan: "Lapor perdana (Otomatis via input Geotagging)",
+        });
+      }
+
+      toast.success("Data berhasil ditambahkan & otomatis tercatat melapor");
+      const newData = await fetchLaporan();
+      setData(newData);
+    } catch (error) {
+      toast.error("Gagal menyimpan data");
+    }
   };
-  const handleUpdate = async (id: string, input: LaporanInput) => {
-    try { await update(id, input); } catch (e) { toast.error("Gagal memperbarui data"); console.error(e); throw e; }
+
+  const handleUpdate = async (l: Laporan) => {
+    try {
+      const { error } = await supabase.from('laporan').update({
+        kategori: l.kategori,
+        nama_klien: l.namaKlien,
+        tanggal_lahir: l.tanggalLahir,
+        jenis_kelamin: l.jenisKelamin,
+        alamat: l.alamat,
+        status_program: l.statusProgram,
+        pasal: l.pasal,
+        asal_instansi: l.asalInstansi,
+        tanggal_lapor: l.tanggalLapor,
+        tanggal_kembali: l.tanggalKembali,
+        pembimbing: l.pembimbing,
+        latitude: l.geotag?.latitude,
+        longitude: l.geotag?.longitude,
+        geo_accuracy: l.geotag?.accuracy,
+        geo_captured_at: l.geotag?.capturedAt
+      }).eq('id', l.id);
+      
+      if (error) throw error;
+      toast.success("Data berhasil diperbarui");
+      const newData = await fetchLaporan();
+      setData(newData);
+    } catch (e) { 
+      toast.error("Gagal update data"); 
+    }
   };
+
   const handleDelete = async (id: string) => {
-    try { await remove(id); } catch (e) { toast.error("Gagal menghapus data"); console.error(e); }
+    try {
+      const { error } = await supabase.from('laporan').delete().eq('id', id);
+      if (error) throw error;
+      setData((prev) => prev.filter((x) => x.id !== id));
+      toast.success("Data dihapus");
+    } catch(e) { 
+      toast.error("Gagal menghapus"); 
+    }
   };
 
   return (
@@ -47,7 +107,7 @@ function LaporDewasa() {
         <ReportForm
           kategori="dewasa"
           editing={editing}
-          onCreate={handleCreate}
+          onSubmit={handleSubmit}
           onUpdate={handleUpdate}
           onCancelEdit={() => setEditing(null)}
           onAfterSave={() => navigate({ to: "/" })}
