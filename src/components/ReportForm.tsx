@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { addOneMonthClamped, toISODate } from "@/utils/dateUtils";
-import type { Laporan, JenisKelamin, StatusProgram, KategoriLapor } from "@/services/laporanService";
-import { generateId } from "@/services/laporanService";
+import type { Laporan, LaporanInput, JenisKelamin, StatusProgram, KategoriLapor } from "@/services/laporanService";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { Loader2, Save, RotateCcw, Keyboard, MapPin, RefreshCw, AlertTriangle } from "lucide-react";
 
@@ -27,14 +26,14 @@ function emptyForm(kategori: KategoriLapor): FormState {
 
 interface Props {
   kategori: KategoriLapor;
-  onSubmit: (data: Laporan) => void;
+  onCreate: (input: LaporanInput) => Promise<void>;
   editing: Laporan | null;
   onCancelEdit: () => void;
-  onUpdate: (data: Laporan) => void;
+  onUpdate: (id: string, input: LaporanInput) => Promise<void>;
   onAfterSave?: () => void;
 }
 
-export function ReportForm({ kategori, onSubmit, editing, onCancelEdit, onUpdate, onAfterSave }: Props) {
+export function ReportForm({ kategori, onCreate, editing, onCancelEdit, onUpdate, onAfterSave }: Props) {
   const [form, setForm] = useState<FormState>(emptyForm(kategori));
   const [submitting, setSubmitting] = useState(false);
   const firstFieldRef = useRef<HTMLInputElement>(null);
@@ -86,24 +85,21 @@ export function ReportForm({ kategori, onSubmit, editing, onCancelEdit, onUpdate
       }
     }
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 200));
-    if (editing) {
-      onUpdate({ ...editing, ...form, geotag: editing.geotag ?? geotag ?? null });
+    try {
+      if (editing) {
+        await onUpdate(editing.id, { ...form, geotag: editing.geotag ?? geotag ?? null });
+      } else {
+        await onCreate({ ...form, geotag: geotag ?? null });
+      }
       toast.success("Informasi sudah disimpan");
-    } else {
-      const data: Laporan = {
-        id: generateId(),
-        createdAt: new Date().toISOString(),
-        ...form,
-        geotag: geotag ?? null,
-      };
-      onSubmit(data);
-      toast.success("Informasi sudah disimpan");
+      setForm(emptyForm(kategori));
+      onCancelEdit();
+      onAfterSave?.();
+    } catch {
+      // error toast handled by caller
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
-    setForm(emptyForm(kategori));
-    onCancelEdit();
-    onAfterSave?.();
   };
 
   const handleFormSubmit = (e: FormEvent) => { e.preventDefault(); submit(); };

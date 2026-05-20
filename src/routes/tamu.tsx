@@ -3,9 +3,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { Toaster, toast } from "sonner";
 import * as XLSX from "xlsx";
 import { Header } from "@/components/Header";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useRealtimeClock } from "@/hooks/useRealtimeClock";
-import { TAMU_STORAGE_KEY, generateTamuId, type Tamu } from "@/services/tamuService";
+import { useTamu } from "@/hooks/useTamu";
 import { formatJam, formatTanggalID, toISODate } from "@/utils/dateUtils";
 import { ArrowLeft, Loader2, RotateCcw, Save, UserCheck, Search, Download, Inbox, Trash2 } from "lucide-react";
 
@@ -28,7 +27,7 @@ interface FormState {
 const emptyForm = (): FormState => ({ namaTamu: "", asalInstansi: "", alamat: "", keperluan: "" });
 
 function BukuTamu() {
-  const [data, setData] = useLocalStorage<Tamu[]>(TAMU_STORAGE_KEY, []);
+  const { data, create, remove } = useTamu();
   const [form, setForm] = useState<FormState>(emptyForm());
   const [submitting, setSubmitting] = useState(false);
   const [q, setQ] = useState("");
@@ -57,22 +56,24 @@ function BukuTamu() {
       }
     }
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 200));
-    const entry: Tamu = {
-      id: generateTamuId(),
-      tanggal: toISODate(new Date()),
-      jam: formatJam(new Date()).slice(0, 5),
-      namaTamu: form.namaTamu.trim(),
-      asalInstansi: form.asalInstansi.trim(),
-      alamat: form.alamat.trim(),
-      keperluan: form.keperluan.trim(),
-      createdAt: new Date().toISOString(),
-    };
-    setData((prev) => [entry, ...prev]);
-    toast.success("Informasi sudah disimpan");
-    setForm(emptyForm());
-    setSubmitting(false);
-    navigate({ to: "/" });
+    try {
+      await create({
+        tanggal: toISODate(new Date()),
+        jam: formatJam(new Date()).slice(0, 5),
+        namaTamu: form.namaTamu.trim(),
+        asalInstansi: form.asalInstansi.trim(),
+        alamat: form.alamat.trim(),
+        keperluan: form.keperluan.trim(),
+      });
+      toast.success("Informasi sudah disimpan");
+      setForm(emptyForm());
+      navigate({ to: "/" });
+    } catch (e) {
+      toast.error("Gagal menyimpan data tamu");
+      console.error(e);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const onSubmit = (e: FormEvent) => { e.preventDefault(); submit(); };
@@ -95,9 +96,8 @@ function BukuTamu() {
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    const sorted = [...data].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    if (!s) return sorted;
-    return sorted.filter((t) =>
+    if (!s) return data;
+    return data.filter((t) =>
       [t.namaTamu, t.asalInstansi, t.alamat, t.keperluan].join(" ").toLowerCase().includes(s),
     );
   }, [data, q]);
@@ -120,6 +120,12 @@ function BukuTamu() {
     XLSX.utils.book_append_sheet(wb, ws, "Buku Tamu");
     XLSX.writeFile(wb, `buku-tamu-${toISODate(new Date())}.xlsx`);
     toast.success("Buku tamu berhasil diexport");
+  };
+
+  const handleDelete = async (id: string) => {
+    try { await remove(id); toast.success("Data tamu dihapus"); }
+    catch (e) { toast.error("Gagal menghapus"); console.error(e); }
+    finally { setConfirmId(null); }
   };
 
   return (
@@ -253,7 +259,7 @@ function BukuTamu() {
                 <p className="text-sm text-muted-foreground mt-1">Data tidak dapat dikembalikan.</p>
                 <div className="mt-4 flex justify-end gap-2">
                   <button onClick={() => setConfirmId(null)} className="h-9 px-3 rounded-md border border-border text-sm hover:bg-accent">Batal</button>
-                  <button onClick={() => { setData((p) => p.filter((x) => x.id !== confirmId)); setConfirmId(null); toast.success("Data tamu dihapus"); }}
+                  <button onClick={() => handleDelete(confirmId)}
                     className="h-9 px-3 rounded-md bg-destructive text-destructive-foreground text-sm hover:opacity-90">Hapus</button>
                 </div>
               </div>
