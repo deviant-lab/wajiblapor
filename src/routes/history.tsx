@@ -3,14 +3,9 @@ import { Toaster, toast } from "sonner";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { Header } from "@/components/Header";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useRealtimeClock } from "@/hooks/useRealtimeClock";
-import {
-  KUNJUNGAN_STORAGE_KEY,
-  generateKunjunganId,
-  type Kunjungan,
-} from "@/services/kunjunganService";
-import { STORAGE_KEY, type Laporan } from "@/services/laporanService";
+import { useKunjungan } from "@/hooks/useKunjungan";
+import { useLaporan } from "@/hooks/useLaporan";
 import { formatJam, formatTanggalID, toISODate } from "@/utils/dateUtils";
 import { CalendarDays, Check, Download, Inbox, Search, Trash2, UserCheck } from "lucide-react";
 
@@ -25,8 +20,8 @@ export const Route = createFileRoute("/history")({
 });
 
 function HistoryPage() {
-  const [laporan] = useLocalStorage<Laporan[]>(STORAGE_KEY, []);
-  const [kunjungan, setKunjungan] = useLocalStorage<Kunjungan[]>(KUNJUNGAN_STORAGE_KEY, []);
+  const { data: laporan } = useLaporan();
+  const { data: kunjungan, create, remove } = useKunjungan();
   const now = useRealtimeClock();
 
   const today = toISODate(new Date());
@@ -40,43 +35,37 @@ function HistoryPage() {
 
   useEffect(() => { klienRef.current?.focus(); }, []);
 
-  const klienById = useMemo(() => {
-    const map = new Map<string, Laporan>();
-    laporan.forEach((l) => map.set(l.id, l));
-    return map;
-  }, [laporan]);
-
-  const submit = () => {
+  const submit = async () => {
     if (!klienId) return toast.error("Pilih klien terlebih dahulu");
     if (!petugas.trim()) return toast.error("Nama petugas wajib diisi");
-    const klien = klienById.get(klienId);
+    const klien = laporan.find((l) => l.id === klienId);
     if (!klien) return toast.error("Data klien tidak ditemukan");
 
     const sudahLapor = kunjungan.some((k) => k.laporanId === klienId && k.tanggal === tanggal);
     if (sudahLapor) return toast.error("Klien ini sudah tercatat melapor pada tanggal tersebut");
 
-    const entry: Kunjungan = {
-      id: generateKunjunganId(),
-      laporanId: klien.id,
-      namaKlien: klien.namaKlien,
-      statusProgram: klien.statusProgram,
-      tanggal,
-      jam: formatJam(new Date()).slice(0, 5),
-      petugas: petugas.trim(),
-      catatan: catatan.trim() || undefined,
-      createdAt: new Date().toISOString(),
-    };
-    setKunjungan((prev) => [entry, ...prev]);
-    toast.success(`${klien.namaKlien} berhasil dicatat melapor`);
-    setKlienId("");
-    setCatatan("");
-    klienRef.current?.focus();
+    try {
+      await create({
+        laporanId: klien.id,
+        tanggal,
+        jam: formatJam(new Date()).slice(0, 5),
+        petugas: petugas.trim(),
+        catatan: catatan.trim() || undefined,
+      });
+      toast.success(`${klien.namaKlien} berhasil dicatat melapor`);
+      setKlienId("");
+      setCatatan("");
+      klienRef.current?.focus();
+    } catch (e) {
+      toast.error("Gagal mencatat kunjungan");
+      console.error(e);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setKunjungan((prev) => prev.filter((x) => x.id !== id));
-    setConfirmId(null);
-    toast.success("Riwayat dihapus");
+  const handleDelete = async (id: string) => {
+    try { await remove(id); toast.success("Riwayat dihapus"); }
+    catch (e) { toast.error("Gagal menghapus"); console.error(e); }
+    finally { setConfirmId(null); }
   };
 
   const filtered = useMemo(() => {
@@ -91,7 +80,7 @@ function HistoryPage() {
   }, [kunjungan, q]);
 
   const grouped = useMemo(() => {
-    const map = new Map<string, Kunjungan[]>();
+    const map = new Map<string, typeof filtered>();
     filtered.forEach((k) => {
       const arr = map.get(k.tanggal) ?? [];
       arr.push(k);
@@ -125,7 +114,6 @@ function HistoryPage() {
       <Toaster position="top-right" richColors closeButton />
       <Header />
       <main className="flex-1 mx-auto max-w-7xl w-full px-4 sm:px-6 py-5 space-y-5">
-        {/* Quick check-in */}
         <section className="bg-card text-card-foreground rounded-xl border border-border shadow-card">
           <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -194,7 +182,6 @@ function HistoryPage() {
           `}</style>
         </section>
 
-        {/* History list */}
         <section className="bg-card text-card-foreground rounded-xl border border-border shadow-card">
           <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
             <div>

@@ -5,9 +5,8 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { Header } from "@/components/Header";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { STORAGE_KEY, type Laporan } from "@/services/laporanService";
-import { KUNJUNGAN_STORAGE_KEY, type Kunjungan } from "@/services/kunjunganService";
+import { useLaporan } from "@/hooks/useLaporan";
+import { useKunjungan } from "@/hooks/useKunjungan";
 import { formatTanggalID, toISODate } from "@/utils/dateUtils";
 import { Users, UserCheck, AlertTriangle, CalendarClock } from "lucide-react";
 
@@ -26,8 +25,8 @@ const BAR_PRIMARY = "oklch(0.55 0.18 250)";
 const BAR_ACCENT = "oklch(0.7 0.15 50)";
 
 function DashboardPage() {
-  const [laporan] = useLocalStorage<Laporan[]>(STORAGE_KEY, []);
-  const [kunjungan] = useLocalStorage<Kunjungan[]>(KUNJUNGAN_STORAGE_KEY, []);
+  const { data: laporan } = useLaporan();
+  const { data: kunjungan } = useKunjungan();
 
   const today = toISODate(new Date());
 
