@@ -1,305 +1,277 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useEffect, useState } from "react";
-import {
-  Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart,
-  ResponsiveContainer, Tooltip, XAxis, YAxis,
-} from "recharts";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { Toaster, toast } from "sonner";
+import * as XLSX from "xlsx";
 import { Header } from "@/components/Header";
-import { fetchLaporan, type Laporan, getKategori } from "@/services/laporanService";
-import { fetchKunjungan, type Kunjungan } from "@/services/kunjunganService";
-import { fetchTamu, type Tamu } from "@/services/tamuService";
+import { useRealtimeClock } from "@/hooks/useRealtimeClock";
+import { fetchTamu, addTamu, type Tamu } from "@/services/tamuService";
+import { supabase } from "@/integrations/supabase/client";
 import { formatTanggalID, toISODate } from "@/utils/dateUtils";
-import { Users, UserCheck, AlertTriangle, CalendarClock, BookOpenCheck, Baby } from "lucide-react";
+import { ArrowLeft, Loader2, RotateCcw, Save, UserCheck, Search, Download, Inbox, Trash2 } from "lucide-react";
 
-export const Route = createFileRoute("/dashboard")({
-  component: DashboardPage,
+export const Route = createFileRoute("/tamu")({
+  component: BukuTamu,
   head: () => ({
     meta: [
-      { title: "Dashboard Statistik Terpadu — SIPADU" },
-      { name: "description", content: "Statistik dan grafik wajib lapor dan buku tamu digital." },
+      { title: "Buku Tamu — SIPADU" },
+      { name: "description", content: "Catat kunjungan tamu instansi/lapas/rutan." },
     ],
   }),
 });
 
-const COLORS = ["hsl(var(--chart-1, 220 90% 56%))", "hsl(var(--chart-2, 30 90% 55%))", "hsl(var(--chart-3, 160 70% 45%))", "hsl(var(--chart-4, 340 80% 60%))"];
-const BAR_PB = "oklch(0.55 0.18 250)";
-const BAR_CB = "oklch(0.7 0.15 50)";
-const LINE_TAMU = "oklch(0.65 0.15 150)";
+interface FormState {
+  namaTamu: string;
+  asalInstansi: string;
+  alamat: string;
+  keperluan: string;
+}
+const emptyForm = (): FormState => ({ namaTamu: "", asalInstansi: "", alamat: "", keperluan: "" });
 
-function DashboardPage() {
-  const [laporan, setLaporan] = useState<Laporan[]>([]);
-  const [kunjungan, setKunjungan] = useState<Kunjungan[]>([]);
-  const [tamu, setTamu] = useState<Tamu[]>([]);
-  const [loading, setLoading] = useState(true);
+function BukuTamu() {
+  const [data, setData] = useState<Tamu[]>([]);
+  const [form, setForm] = useState<FormState>(emptyForm());
+  const [submitting, setSubmitting] = useState(false);
+  const [q, setQ] = useState("");
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const now = useRealtimeClock();
+  const firstRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    Promise.all([fetchLaporan(), fetchKunjungan(), fetchTamu()])
-      .then(([laporanData, kunjunganData, tamuData]) => {
-        setLaporan(laporanData);
-        setKunjungan(kunjunganData);
-        setTamu(tamuData);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    firstRef.current?.focus();
+    fetchTamu().then(setData).catch(console.error);
   }, []);
 
-  const today = toISODate(new Date());
+  const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
 
-  // Satukan Kunjungan Aktual & Lapor Perdana untuk hitungan yang akurat
-  const unifiedLapor = useMemo(() => {
-    const list: Array<{ tanggal: string; statusProgram: string; petugas: string }> = [];
-    
-    kunjungan.forEach((k) => {
-      const l = laporan.find((x) => x.id === k.laporanId);
-      list.push({ tanggal: k.tanggal, statusProgram: l?.statusProgram || "PB", petugas: k.petugas });
-    });
-
-    laporan.forEach((l) => {
-      const hasKunjungan = kunjungan.some((k) => k.laporanId === l.id && k.tanggal === l.tanggalLapor);
-      if (!hasKunjungan) {
-        list.push({ tanggal: l.tanggalLapor, statusProgram: l.statusProgram, petugas: l.pembimbing });
+  const submit = async () => {
+    const required: Array<[keyof FormState, string]> = [
+      ["namaTamu", "Nama Tamu"],
+      ["asalInstansi", "Asal Instansi/Lapas/Rutan"],
+      ["alamat", "Alamat Rumah"],
+      ["keperluan", "Keperluan"],
+    ];
+    for (const [k, label] of required) {
+      if (!form[k].trim()) {
+        toast.error(`${label} wajib diisi`);
+        formRef.current?.querySelector<HTMLElement>(`[name="${k}"]`)?.focus();
+        return;
       }
-    });
-
-    return list;
-  }, [laporan, kunjungan]);
-
-  const stats = useMemo(() => {
-    const total = laporan.length;
-    const anak = laporan.filter((l) => getKategori(l) === "anak").length;
-    const dewasa = laporan.filter((l) => getKategori(l) === "dewasa").length;
+    }
     
-    const todayLapor = unifiedLapor.filter((k) => k.tanggal === today).length;
-    const todayTamu = tamu.filter((t) => t.tanggal === today).length;
-
-    const overdue = laporan.filter((l) => l.tanggalKembali && l.tanggalKembali < today).length;
-    const in7days = laporan.filter((l) => {
-      if (!l.tanggalKembali) return false;
-      return l.tanggalKembali >= today && l.tanggalKembali <= toISODate(new Date(Date.now() + 7 * 86400000));
-    }).length;
-
-    return { total, anak, dewasa, todayLapor, totalTamu: tamu.length, todayTamu, overdue, in7days };
-  }, [laporan, unifiedLapor, tamu, today]);
-
-  const visitsTrend = useMemo(() => {
-    const days: any[] = [];
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const iso = toISODate(d);
-      
-      const laporDay = unifiedLapor.filter((k) => k.tanggal === iso);
-      const tamuDay = tamu.filter((t) => t.tanggal === iso);
-      
-      days.push({
-        tanggal: iso,
-        label: `${d.getDate()}/${d.getMonth() + 1}`,
-        pb: laporDay.filter((k) => k.statusProgram === "PB").length,
-        cb: laporDay.filter((k) => k.statusProgram === "CB").length,
-        tamu: tamuDay.length,
+    setSubmitting(true);
+    try {
+      await addTamu({
+        namaTamu: form.namaTamu.trim(),
+        asalInstansi: form.asalInstansi.trim(),
+        alamat: form.alamat.trim(),
+        keperluan: form.keperluan.trim()
       });
+      toast.success("Informasi sudah disimpan");
+      setForm(emptyForm());
+      const newData = await fetchTamu();
+      setData(newData);
+      navigate({ to: "/" });
+    } catch (error) {
+      toast.error("Gagal menyimpan data tamu");
+    } finally {
+      setSubmitting(false);
     }
-    return days;
-  }, [unifiedLapor, tamu]);
+  };
 
-  const monthlyReg = useMemo(() => {
-    const arr: any[] = [];
-    const now = new Date();
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const label = d.toLocaleDateString("id-ID", { month: "short", year: "2-digit" });
-      const total = laporan.filter((l) => (l.tanggalLapor ?? "").startsWith(key)).length;
-      arr.push({ label, key, total });
+  const onSubmit = (e: FormEvent) => { e.preventDefault(); submit(); };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
+    if (e.key === "Escape") { e.preventDefault(); setForm(emptyForm()); firstRef.current?.focus(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); submit(); return; }
+    if (e.key === "Enter") {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "TEXTAREA" && e.shiftKey) return;
+      e.preventDefault();
+      const focusables = Array.from(formRef.current!.querySelectorAll<HTMLElement>(
+        'input:not([disabled]), textarea:not([disabled]), button[type="submit"]',
+      )).filter((el) => !el.hasAttribute("data-skip-enter"));
+      const idx = focusables.indexOf(target);
+      if (idx >= 0 && idx < focusables.length - 1) focusables[idx + 1].focus();
+      else submit();
     }
-    return arr;
-  }, [laporan]);
+  };
 
-  const statusData = [
-    { name: "PB (Pembebasan)", value: laporan.filter(l => l.statusProgram === "PB").length },
-    { name: "CB (Cuti)", value: laporan.filter(l => l.statusProgram === "CB").length },
-  ];
-  
-  const kategoriData = [
-    { name: "Dewasa", value: stats.dewasa },
-    { name: "Anak", value: stats.anak },
-  ];
+  const handleDelete = async (id: string) => {
+    try {
+      await supabase.from('tamu').delete().eq('id', id);
+      setData((p) => p.filter((x) => x.id !== id));
+      setConfirmId(null);
+      toast.success("Data tamu dihapus");
+    } catch(e) {
+      toast.error("Gagal menghapus data tamu");
+    }
+  };
 
-  const topPetugas = useMemo(() => {
-    const map = new Map<string, number>();
-    unifiedLapor.forEach((k) => map.set(k.petugas, (map.get(k.petugas) ?? 0) + 1));
-    return Array.from(map.entries())
-      .map(([nama, total]) => ({ nama, total }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
-  }, [unifiedLapor]);
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    const sorted = [...data].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    if (!s) return sorted;
+    return sorted.filter((t) =>
+      [t.namaTamu, t.asalInstansi, t.alamat, t.keperluan].join(" ").toLowerCase().includes(s),
+    );
+  }, [data, q]);
 
-  const upcoming = useMemo(() => {
-    return [...laporan]
-      .filter((l) => l.tanggalKembali && l.tanggalKembali >= today)
-      .sort((a, b) => a.tanggalKembali.localeCompare(b.tanggalKembali))
-      .slice(0, 5);
-  }, [laporan, today]);
+  const exportExcel = () => {
+    if (data.length === 0) return toast.error("Tidak ada data untuk diexport");
+    const rows = filtered.map((t, i) => ({
+      No: i + 1,
+      Tanggal: formatTanggalID(t.tanggal),
+      Jam: t.jam,
+      "Nama Tamu": t.namaTamu,
+      "Asal Instansi/Lapas/Rutan": t.asalInstansi,
+      "Alamat Rumah": t.alamat,
+      Keperluan: t.keperluan,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Buku Tamu");
+    XLSX.writeFile(wb, `buku-tamu-${toISODate(new Date())}.xlsx`);
+    toast.success("Buku tamu berhasil diexport");
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <Toaster position="top-right" richColors closeButton />
       <Header />
       <main className="flex-1 mx-auto max-w-7xl w-full px-4 sm:px-6 py-5 space-y-5">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight">Dashboard Statistik Terpadu</h2>
-          <p className="text-sm text-muted-foreground">Ringkasan data wajib lapor dan buku tamu secara real-time.</p>
-        </div>
+        <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" /> Kembali ke Beranda
+        </Link>
 
-        {loading ? (
-          <div className="py-20 flex flex-col items-center justify-center space-y-4">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-            <p className="text-sm text-muted-foreground">Memuat data dashboard...</p>
+        {/* Section Form */}
+        <section className="bg-card text-card-foreground rounded-xl border border-border shadow-card">
+          <div className="px-5 py-4 border-b border-border">
+            <h2 className="text-base font-semibold">Form Input Buku Tamu</h2>
+            <p className="text-xs text-muted-foreground">Isi data tamu dengan lengkap.</p>
           </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              <StatCard icon={<Users className="h-5 w-5" />} label="Klien Dewasa" value={stats.dewasa} hint="Total Klien" />
-              <StatCard icon={<Baby className="h-5 w-5" />} label="Klien Anak" value={stats.anak} hint="Total Klien" />
-              <StatCard icon={<UserCheck className="h-5 w-5" />} label="Lapor Hari Ini" value={stats.todayLapor} hint="Aktivitas Klien" accent="primary" />
-              
-              <StatCard icon={<BookOpenCheck className="h-5 w-5" />} label="Total Tamu" value={stats.totalTamu} hint="Sejak awal" />
-              <StatCard icon={<CalendarClock className="h-5 w-5" />} label="Jatuh Tempo" value={stats.in7days} hint="Dalam 7 hari" accent="warning" />
-              <StatCard icon={<AlertTriangle className="h-5 w-5" />} label="Terlambat" value={stats.overdue} hint="Lewat batas lapor" accent="destructive" />
+          <form ref={formRef} onSubmit={onSubmit} onKeyDown={onKeyDown} className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Nama Tamu" required>
+              <input ref={firstRef} name="namaTamu" className="input" value={form.namaTamu}
+                onChange={(e) => set("namaTamu", e.target.value)} placeholder="Nama lengkap tamu" />
+            </Field>
+            <Field label="Asal Instansi / Lapas / Rutan" required>
+              <input name="asalInstansi" className="input" value={form.asalInstansi}
+                onChange={(e) => set("asalInstansi", e.target.value)} placeholder="Instansi asal" />
+            </Field>
+            <Field label="Alamat Rumah" required className="md:col-span-2">
+              <textarea name="alamat" rows={2} className="input resize-none" value={form.alamat}
+                onChange={(e) => set("alamat", e.target.value)} placeholder="Alamat tamu" />
+            </Field>
+            <Field label="Keperluan" required className="md:col-span-2">
+              <input name="keperluan" className="input" value={form.keperluan}
+                onChange={(e) => set("keperluan", e.target.value)} placeholder="Tujuan kedatangan" />
+            </Field>
+            <div className="md:col-span-2 flex flex-wrap gap-2 pt-2 border-t border-border">
+              <button type="submit" disabled={submitting}
+                className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 h-10 text-sm font-medium hover:opacity-90 disabled:opacity-60">
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Simpan Data
+              </button>
+              <button type="button" onClick={() => { setForm(emptyForm()); firstRef.current?.focus(); }} data-skip-enter
+                className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-4 h-10 text-sm font-medium hover:bg-accent">
+                <RotateCcw className="h-4 w-4" /> Reset
+              </button>
             </div>
+          </form>
+          <style>{`
+            .input { width:100%; height:2.5rem; padding:0 .75rem; border-radius:.5rem; border:1px solid var(--color-input); background:var(--color-card); color:var(--color-card-foreground); font-size:.9rem; outline:none; }
+            textarea.input { height:auto; padding:.5rem .75rem; }
+            .input:focus { border-color: var(--color-ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-ring) 20%, transparent); }
+          `}</style>
+        </section>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <ChartCard title="Tren Aktivitas 14 Hari Terakhir" className="lg:col-span-2">
-                <ResponsiveContainer width="100%" height={260}>
-                  <LineChart data={visitsTrend}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.9 0 0 / 0.4)" />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="pb" name="Wajib Lapor PB" stroke={BAR_PB} strokeWidth={2} dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="cb" name="Wajib Lapor CB" stroke={BAR_CB} strokeWidth={2} dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="tamu" name="Buku Tamu" stroke={LINE_TAMU} strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </ChartCard>
-
-              <ChartCard title="Kategori Klien Terdaftar">
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie data={kategoriData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} label>
-                      {kategoriData.map((_, i) => <Cell key={i} fill={i === 0 ? BAR_PB : LINE_TAMU} />)}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </ChartCard>
-
-              <ChartCard title="Pendaftaran Klien Baru 6 Bulan Terakhir" className="lg:col-span-2">
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={monthlyReg}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.9 0 0 / 0.4)" />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Bar dataKey="total" name="Pendaftar Baru" fill={BAR_PB} radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartCard>
-
-              <ChartCard title="Distribusi Program Klien">
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                      {statusData.map((_, i) => <Cell key={i} fill={i === 0 ? BAR_PB : BAR_CB} />)}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </ChartCard>
+        {/* Section Table */}
+        <section className="bg-card text-card-foreground rounded-xl border border-border shadow-card">
+          <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold flex items-center gap-2"><UserCheck className="h-5 w-5" /> Daftar Tamu</h2>
+              <p className="text-xs text-muted-foreground">Total {data.length} tamu tercatat</p>
             </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <ChartCard title="Top 5 Petugas Wajib Lapor (Jumlah Pencatatan)">
-                {topPetugas.length === 0 ? (
-                  <EmptyHint text="Belum ada data petugas." />
-                ) : (
-                  <ul className="divide-y divide-border">
-                    {topPetugas.map((p, i) => (
-                      <li key={p.nama} className="flex items-center justify-between py-2.5 text-sm">
-                        <span className="flex items-center gap-3">
-                          <span className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-muted text-xs font-semibold">{i + 1}</span>
-                          <span className="font-medium">{p.nama}</span>
-                        </span>
-                        <span className="text-muted-foreground tabular-nums">{p.total} lapor</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </ChartCard>
-
-              <ChartCard title="Jadwal Lapor Berikutnya (Akan Datang)">
-                {upcoming.length === 0 ? (
-                  <EmptyHint text="Belum ada jadwal mendatang." />
-                ) : (
-                  <ul className="divide-y divide-border">
-                    {upcoming.map((l) => (
-                      <li key={l.id} className="flex items-center justify-between py-2.5 text-sm">
-                        <span className="flex items-center gap-2">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${
-                            l.statusProgram === "PB"
-                              ? "bg-primary/10 text-primary border-primary/30"
-                              : "bg-warning/20 text-warning-foreground border-warning/40"
-                          }`}>{l.statusProgram}</span>
-                          <span className="font-medium">{l.namaKlien}</span>
-                        </span>
-                        <span className="text-muted-foreground">{formatTanggalID(l.tanggalKembali)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </ChartCard>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari tamu..."
+                  className="h-10 pl-9 pr-3 rounded-md border border-input bg-card text-sm w-56 focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring" />
+              </div>
+              <button onClick={exportExcel} className="inline-flex items-center gap-2 h-10 px-3 rounded-md border border-border bg-card text-sm hover:bg-accent">
+                <Download className="h-4 w-4" /> Export
+              </button>
             </div>
-          </>
+          </div>
+          
+          {filtered.length === 0 ? (
+            <div className="py-16 flex flex-col items-center text-muted-foreground">
+              <Inbox className="h-10 w-10 opacity-50 mb-2" />
+              <p className="text-sm">Belum ada data tamu.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-5 py-3 font-medium">Waktu</th>
+                    <th className="px-5 py-3 font-medium">Nama & Instansi</th>
+                    <th className="px-5 py-3 font-medium">Keperluan</th>
+                    <th className="px-5 py-3 font-medium text-center w-16">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filtered.map((t) => (
+                    <tr key={t.id} className="hover:bg-muted/40">
+                      <td className="px-5 py-3 align-top whitespace-nowrap">
+                        <div className="font-medium">{formatTanggalID(t.tanggal)}</div>
+                        <div className="text-muted-foreground text-xs mt-0.5">{t.jam}</div>
+                      </td>
+                      <td className="px-5 py-3 align-top">
+                        <div className="font-medium">{t.namaTamu}</div>
+                        <div className="text-muted-foreground text-xs mt-0.5">{t.asalInstansi}</div>
+                      </td>
+                      <td className="px-5 py-3 align-top max-w-xs truncate" title={t.keperluan}>
+                        {t.keperluan}
+                      </td>
+                      <td className="px-5 py-3 align-top text-center">
+                        <button onClick={() => setConfirmId(t.id)} className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-border text-destructive hover:bg-destructive/10">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {/* Modal Hapus */}
+        {confirmId && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setConfirmId(null)}>
+            <div className="bg-card text-card-foreground rounded-xl border border-border max-w-sm w-full p-5" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-base font-semibold">Hapus data tamu?</h3>
+              <p className="text-sm text-muted-foreground mt-1">Data tidak dapat dikembalikan.</p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button onClick={() => setConfirmId(null)} className="h-9 px-3 rounded-md border border-border text-sm hover:bg-accent">Batal</button>
+                <button onClick={() => handleDelete(confirmId)} className="h-9 px-3 rounded-md bg-destructive text-destructive-foreground text-sm hover:opacity-90">Hapus</button>
+              </div>
+            </div>
+          </div>
         )}
       </main>
-      <footer className="border-t border-border py-3 text-center text-xs text-muted-foreground">
-        SIPADU · Sistem Informasi Pelayanan dan Buku Tamu Terpadu
-      </footer>
     </div>
   );
 }
 
-function StatCard({ icon, label, value, hint, accent = "default" }: { icon: React.ReactNode; label: string; value: number; hint?: string; accent?: "default" | "primary" | "warning" | "destructive" }) {
-  const accentCls =
-    accent === "primary" ? "bg-primary/10 text-primary"
-    : accent === "warning" ? "bg-warning/20 text-warning-foreground"
-    : accent === "destructive" ? "bg-destructive/10 text-destructive"
-    : "bg-muted text-foreground";
+function Field({ label, required, className = "", children }: { label: string; required?: boolean; className?: string; children: React.ReactNode }) {
   return (
-    <div className="bg-card text-card-foreground rounded-xl border border-border shadow-card p-4">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide truncate pr-2">{label}</p>
-        <span className={`h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md ${accentCls}`}>{icon}</span>
-      </div>
-      <p className="mt-2 text-3xl font-semibold tabular-nums">{value}</p>
-      {hint && <p className="text-xs text-muted-foreground mt-1">{hint}</p>}
-    </div>
+    <label className={`flex flex-col gap-1.5 ${className}`}>
+      <span className="text-xs font-medium text-foreground/80">{label}{required && <span className="text-destructive ml-0.5">*</span>}</span>
+      {children}
+    </label>
   );
-}
-
-function ChartCard({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`bg-card text-card-foreground rounded-xl border border-border shadow-card ${className}`}>
-      <div className="px-5 py-3 border-b border-border">
-        <h3 className="text-sm font-semibold">{title}</h3>
-      </div>
-      <div className="p-4">{children}</div>
-    </div>
-  );
-}
-
-function EmptyHint({ text }: { text: string }) {
-  return <p className="text-sm text-muted-foreground py-8 text-center">{text}</p>;
 }
