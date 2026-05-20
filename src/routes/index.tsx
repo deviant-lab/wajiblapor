@@ -1,9 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import { Header } from "@/components/Header";
-import { useLaporan } from "@/hooks/useLaporan";
-import { useTamu } from "@/hooks/useTamu";
-import { getKategori } from "@/services/laporanService";
+import { fetchLaporan, type Laporan, getKategori } from "@/services/laporanService";
+import { fetchTamu, type Tamu } from "@/services/tamuService";
 import { toISODate } from "@/utils/dateUtils";
 import { UserPlus, Baby, UserCheck, ArrowRight } from "lucide-react";
 
@@ -12,15 +12,24 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "SIPADU — Sistem Informasi Pelayanan dan Buku Tamu Terpadu" },
-      { name: "description", content: "SIPADU: aplikasi pelayanan administrasi terpadu — wajib lapor anak, dewasa, dan buku tamu." },
+      {
+        name: "description",
+        content:
+          "SIPADU: aplikasi pelayanan administrasi terpadu — wajib lapor anak, dewasa, dan buku tamu.",
+      },
     ],
   }),
 });
 
 function Beranda() {
-  const { data: laporan } = useLaporan();
-  const { data: tamu } = useTamu();
+  const [laporan, setLaporan] = useState<Laporan[]>([]);
+  const [tamu, setTamu] = useState<Tamu[]>([]);
   const today = toISODate(new Date());
+
+  useEffect(() => {
+    fetchLaporan().then(setLaporan).catch(console.error);
+    fetchTamu().then(setTamu).catch(console.error);
+  }, []);
 
   const totalDewasa = laporan.filter((l) => getKategori(l) === "dewasa").length;
   const totalAnak = laporan.filter((l) => getKategori(l) === "anak").length;
@@ -30,76 +39,127 @@ function Beranda() {
     {
       to: "/tamu" as const,
       title: "Buku Tamu",
-      desc: "Catat kunjungan tamu, instansi/lapas/rutan, dan keperluan.",
-      icon: <UserCheck className="h-7 w-7" />,
       hint: `${tamuHariIni} tamu hari ini`,
-      tone: "from-emerald-500/15 to-emerald-500/0 text-emerald-700 dark:text-emerald-300",
-      iconBg: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+      icon: <UserCheck className="h-10 w-10" />,
+      cardClass:
+        "border-emerald-900/60 hover:border-emerald-700/60 bg-[#0d1f18]",
+      iconClass: "bg-[#0a1f14] text-emerald-400",
+      hintClass: "text-emerald-400",
+      arrowClass: "bg-[#0a1f14] text-emerald-400",
+      glowClass: "from-emerald-500/5 to-transparent",
     },
     {
       to: "/lapor/anak" as const,
       title: "Wajib Lapor Anak",
-      desc: "Input data wajib lapor untuk klien kategori anak.",
-      icon: <Baby className="h-7 w-7" />,
       hint: `${totalAnak} klien terdaftar`,
-      tone: "from-amber-500/15 to-amber-500/0 text-amber-700 dark:text-amber-300",
-      iconBg: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+      icon: <Baby className="h-10 w-10" />,
+      cardClass: "border-amber-900/60 hover:border-amber-700/60 bg-[#1f1608]",
+      iconClass: "bg-[#1a1005] text-amber-400",
+      hintClass: "text-amber-400",
+      arrowClass: "bg-[#1a1005] text-amber-400",
+      glowClass: "from-amber-500/5 to-transparent",
     },
     {
       to: "/lapor/dewasa" as const,
       title: "Wajib Lapor Dewasa",
-      desc: "Input data wajib lapor untuk klien kategori dewasa.",
-      icon: <UserPlus className="h-7 w-7" />,
       hint: `${totalDewasa} klien terdaftar`,
-      tone: "from-primary/15 to-primary/0 text-primary",
-      iconBg: "bg-primary/15 text-primary",
+      icon: <UserPlus className="h-10 w-10" />,
+      cardClass: "border-blue-900/60 hover:border-blue-700/60 bg-[#0d1a2a]",
+      iconClass: "bg-[#091525] text-blue-400",
+      hintClass: "text-blue-400",
+      arrowClass: "bg-[#091525] text-blue-400",
+      glowClass: "from-blue-500/5 to-transparent",
     },
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-[#0d1117] text-[#e6edf3]">
       <Toaster position="top-right" richColors closeButton />
       <Header />
-      <main className="flex-1 mx-auto max-w-7xl w-full px-4 sm:px-6 py-8">
-        <div className="mb-6">
-          <h2 className="text-2xl font-semibold tracking-tight">Pilih Layanan</h2>
-          <p className="text-sm text-muted-foreground">
-            Silakan pilih menu layanan terlebih dahulu sebelum melakukan input data.
+
+      <main className="flex-1 flex flex-col items-center px-4 sm:px-6 py-14">
+        {/* Page heading */}
+        <div className="mb-10 text-center">
+          <h2 className="text-3xl font-semibold tracking-tight text-[#e6edf3]">
+            Pilih Layanan
+          </h2>
+          <p className="text-sm text-[#8b949e] mt-2">
+            Silakan pilih menu layanan terlebih dahulu sebelum melakukan input
+            data.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Menu cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full max-w-5xl">
           {menus.map((m) => (
             <Link
               key={m.to}
               to={m.to}
-              className="group relative overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-card hover:shadow-elevated transition-shadow p-5 flex flex-col gap-4"
+              className={`
+                group relative overflow-hidden rounded-2xl border
+                transition-all duration-200 hover:-translate-y-1
+                flex flex-col items-center text-center p-10 gap-0
+                ${m.cardClass}
+              `}
             >
-              <div className={`absolute inset-0 bg-gradient-to-br ${m.tone} opacity-60 pointer-events-none`} />
-              <div className="relative flex items-start justify-between">
-                <div className={`h-14 w-14 rounded-xl inline-flex items-center justify-center ${m.iconBg}`}>
-                  {m.icon}
-                </div>
-                <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
+              {/* Subtle top glow */}
+              <div
+                className={`absolute inset-0 bg-gradient-to-b ${m.glowClass} pointer-events-none`}
+              />
+
+              {/* Icon circle */}
+              <div
+                className={`
+                  relative z-10 h-[90px] w-[90px] rounded-full
+                  inline-flex items-center justify-center mb-7
+                  ${m.iconClass}
+                `}
+              >
+                {m.icon}
               </div>
-              <div className="relative">
-                <h3 className="text-lg font-semibold">{m.title}</h3>
-                <p className="text-sm text-muted-foreground mt-1">{m.desc}</p>
-                <p className="text-xs font-medium mt-3 text-foreground/70">{m.hint}</p>
+
+              {/* Title */}
+              <h3 className="relative z-10 text-xl font-semibold text-[#e6edf3] mb-5">
+                {m.title}
+              </h3>
+
+              {/* Hint */}
+              <p className={`relative z-10 text-sm font-medium mb-7 ${m.hintClass}`}>
+                {m.hint}
+              </p>
+
+              {/* Arrow button */}
+              <div
+                className={`
+                  relative z-10 h-11 w-11 rounded-full
+                  inline-flex items-center justify-center
+                  transition-transform duration-150
+                  group-hover:translate-x-1
+                  ${m.arrowClass}
+                `}
+              >
+                <ArrowRight className="h-5 w-5" />
               </div>
             </Link>
           ))}
         </div>
 
-        <div className="mt-8 rounded-lg border border-dashed border-border bg-muted/30 p-4 text-xs text-muted-foreground">
-          <p>
-            <span className="font-semibold text-foreground">Tips:</span> setelah menyimpan data, sistem akan otomatis kembali ke halaman ini.
-            Anda dapat melihat riwayat di menu <span className="font-medium">Riwayat Harian</span> dan statistik pada <span className="font-medium">Dashboard</span>.
+        {/* Tips */}
+        <div className="mt-8 w-full max-w-5xl rounded-xl border border-[#21262d] bg-[#161b22] px-5 py-4 flex gap-3 items-start">
+          <span className="text-[#8b949e] text-base mt-0.5">💡</span>
+          <p className="text-xs text-[#8b949e] leading-relaxed">
+            <span className="font-semibold text-[#c9d1d9]">Tips:</span> setelah
+            menyimpan data, sistem akan otomatis kembali ke halaman ini. Anda
+            dapat melihat riwayat di menu{" "}
+            <span className="font-medium text-[#c9d1d9]">Riwayat Harian</span>{" "}
+            dan statistik pada{" "}
+            <span className="font-medium text-[#c9d1d9]">Dashboard</span>.
           </p>
         </div>
       </main>
-      <footer className="border-t border-border py-3 text-center text-xs text-muted-foreground">
-        SIPADU · Sistem Informasi Pelayanan dan Buku Tamu Terpadu · v2.0
+
+      <footer className="border-t border-[#21262d] py-3 text-center text-xs text-[#484f58]">
+        SIPADU - Sistem Informasi Pelayanan dan Buku Tamu Terpadu - v2.0
       </footer>
     </div>
   );
