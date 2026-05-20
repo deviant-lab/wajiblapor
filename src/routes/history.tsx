@@ -1,289 +1,455 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Toaster, toast } from "sonner";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { Header } from "@/components/Header";
-import { useRealtimeClock } from "@/hooks/useRealtimeClock";
-import { useKunjungan } from "@/hooks/useKunjungan";
-import { useLaporan } from "@/hooks/useLaporan";
-import { formatJam, formatTanggalID, toISODate } from "@/utils/dateUtils";
-import { CalendarDays, Check, Download, Inbox, Search, Trash2, UserCheck } from "lucide-react";
+import { fetchKunjungan, type Kunjungan } from "@/services/kunjunganService";
+import { fetchLaporan, type Laporan, getKategori } from "@/services/laporanService";
+import { fetchTamu, type Tamu } from "@/services/tamuService";
+import { supabase } from "@/integrations/supabase/client";
+import { formatTanggalID, toISODate } from "@/utils/dateUtils";
+import { CalendarDays, Download, Inbox, Search, Trash2, Filter, Users, UserCheck, Baby, UserPlus } from "lucide-react";
 
 export const Route = createFileRoute("/history")({
   component: HistoryPage,
   head: () => ({
     meta: [
-      { title: "Riwayat Harian — SIPADU" },
-      { name: "description", content: "Riwayat kunjungan wajib lapor harian klien." },
+      { title: "Riwayat Aktivitas Terpadu — SIPADU" },
+      { name: "description", content: "Pemantauan riwayat kunjungan terpadu harian, bulanan, dan tahunan." },
     ],
   }),
 });
 
+type FilterMode = "harian" | "bulanan" | "tahunan" | "semua";
+
 function HistoryPage() {
-  const { data: laporan } = useLaporan();
-  const { data: kunjungan, create, remove } = useKunjungan();
-  const now = useRealtimeClock();
-
+  const [laporan, setLaporan] = useState<Laporan[]>([]);
+  const [kunjungan, setKunjungan] = useState<Kunjungan[]>([]);
+  const [tamu, setTamu] = useState<Tamu[]>([]);
+  
   const today = toISODate(new Date());
-  const [tanggal, setTanggal] = useState(today);
-  const [klienId, setKlienId] = useState("");
-  const [petugas, setPetugas] = useState("");
-  const [catatan, setCatatan] = useState("");
+
+  // Filter & Search State
   const [q, setQ] = useState("");
-  const [confirmId, setConfirmId] = useState<string | null>(null);
-  const klienRef = useRef<HTMLSelectElement>(null);
+  const [filterMode, setFilterMode] = useState<FilterMode>("harian");
+  const [filterValue, setFilterValue] = useState<string>(today); 
+  const [kategoriFilter, setKategoriFilter] = useState<string>("Semua");
+  
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string, type: "kunjungan" | "tamu" } | null>(null);
 
-  useEffect(() => { klienRef.current?.focus(); }, []);
+  useEffect(() => {
+    fetchLaporan().then(setLaporan).catch(console.error);
+    fetchKunjungan().then(setKunjungan).catch(console.error);
+    fetchTamu().then(setTamu).catch(console.error);
+  }, []);
 
-  const submit = async () => {
-    if (!klienId) return toast.error("Pilih klien terlebih dahulu");
-    if (!petugas.trim()) return toast.error("Nama petugas wajib diisi");
-    const klien = laporan.find((l) => l.id === klienId);
-    if (!klien) return toast.error("Data klien tidak ditemukan");
+  const klienById = useMemo(() => {
+    const map = new Map<string, Laporan>();
+    laporan.forEach((l) => map.set(l.id, l));
+    return map;
+  }, [laporan]);
 
-    const sudahLapor = kunjungan.some((k) => k.laporanId === klienId && k.tanggal === tanggal);
-    if (sudahLapor) return toast.error("Klien ini sudah tercatat melapor pada tanggal tersebut");
+  const handleFilterModeChange = (mode: FilterMode) => {
+    setFilterMode(mode);
+    if (mode === "harian") setFilterValue(today);
+    else if (mode === "bulanan") setFilterValue(today.slice(0, 7)); 
+    else if (mode === "tahunan") setFilterValue(today.slice(0, 4)); 
+    else setFilterValue(""); 
+  };
 
-    try {
-      await create({
-        laporanId: klien.id,
-        tanggal,
-        jam: formatJam(new Date()).slice(0, 5),
-        petugas: petugas.trim(),
-        catatan: catatan.trim() || undefined,
+  const isMatchDate = (tanggalLapor: string) => {
+    if (filterMode === "semua") return true;
+    if (!tanggalLapor) return false;
+    if (filterMode === "harian") return tanggalLapor === filterValue;
+    if (filterMode === "bulanan") return tanggalLapor.startsWith(filterValue);
+    if (filterMode === "tahunan") return tanggalLapor.startsWith(filterValue);
+    return true;
+  };
+
+  // --- DATA WAJIB LAPOR ---
+  const filteredWajibLapor = useMemo(() => {
+    const list: any[] = [];
+
+    kunjungan.forEach((k) => {
+      if (!isMatchDate(k.tanggal)) return;
+      const l = klienById.get(k.laporanId);
+      list.push({
+        id: k.id,
+        type: "kunjungan",
+        namaKlien: l?.namaKlien || k.namaKlien || "-",
+        tanggalLahir: l?.tanggalLahir || "-",
+        jenisKelamin: l?.jenisKelamin || "-",
+        alamat: l?.alamat || "-",
+        statusProgram: l?.statusProgram || k.statusProgram || "-",
+        pasal: l?.pasal || "-",
+        asalInstansi: l?.asalInstansi || "-",
+        tanggalLapor: k.tanggal, 
+        tanggalKembali: l?.tanggalKembali || "-",
+        pembimbing: l?.pembimbing || k.petugas || "-",
+        kategori: l ? getKategori(l) : "dewasa", 
       });
-      toast.success(`${klien.namaKlien} berhasil dicatat melapor`);
-      setKlienId("");
-      setCatatan("");
-      klienRef.current?.focus();
-    } catch (e) {
-      toast.error("Gagal mencatat kunjungan");
-      console.error(e);
+    });
+
+    laporan.forEach((l) => {
+      if (!isMatchDate(l.tanggalLapor)) return;
+      const sudahAdaKunjungan = kunjungan.some((k) => k.laporanId === l.id && k.tanggal === l.tanggalLapor);
+      if (!sudahAdaKunjungan) {
+        list.push({
+          id: l.id,
+          type: "laporan",
+          namaKlien: l.namaKlien,
+          tanggalLahir: l.tanggalLahir,
+          jenisKelamin: l.jenisKelamin,
+          alamat: l.alamat,
+          statusProgram: l.statusProgram,
+          pasal: l.pasal,
+          asalInstansi: l.asalInstansi,
+          tanggalLapor: l.tanggalLapor,
+          tanggalKembali: l.tanggalKembali,
+          pembimbing: l.pembimbing,
+          kategori: getKategori(l),
+        });
+      }
+    });
+
+    let result = list.sort((a, b) => b.tanggalLapor.localeCompare(a.tanggalLapor));
+
+    if (kategoriFilter !== "Semua") {
+      result = result.filter(item => item.kategori === kategoriFilter.toLowerCase());
     }
-  };
 
-  const handleDelete = async (id: string) => {
-    try { await remove(id); toast.success("Riwayat dihapus"); }
-    catch (e) { toast.error("Gagal menghapus"); console.error(e); }
-    finally { setConfirmId(null); }
-  };
-
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    let list = [...kunjungan].sort((a, b) => (a.tanggal === b.tanggal ? b.jam.localeCompare(a.jam) : b.tanggal.localeCompare(a.tanggal)));
-    if (s) {
-      list = list.filter((k) =>
-        [k.namaKlien, k.petugas, k.catatan ?? "", k.statusProgram].join(" ").toLowerCase().includes(s),
+    if (q.trim()) {
+      const s = q.toLowerCase();
+      result = result.filter(item => 
+        [item.namaKlien, item.alamat, item.pasal, item.asalInstansi, item.pembimbing].join(" ").toLowerCase().includes(s)
       );
     }
-    return list;
-  }, [kunjungan, q]);
+    return result;
+  }, [kunjungan, laporan, klienById, filterMode, filterValue, kategoriFilter, q]);
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, typeof filtered>();
-    filtered.forEach((k) => {
-      const arr = map.get(k.tanggal) ?? [];
-      arr.push(k);
-      map.set(k.tanggal, arr);
-    });
-    return Array.from(map.entries());
-  }, [filtered]);
+  // --- DATA BUKU TAMU ---
+  const filteredTamu = useMemo(() => {
+    let result = tamu
+      .filter((t) => isMatchDate(t.tanggal))
+      .sort((a, b) => b.tanggal.localeCompare(a.tanggal));
 
-  const todayCount = kunjungan.filter((k) => k.tanggal === today).length;
+    if (q.trim()) {
+      const s = q.toLowerCase();
+      result = result.filter(item => 
+        [item.namaTamu, item.asalInstansi, item.alamat, item.keperluan].join(" ").toLowerCase().includes(s)
+      );
+    }
+    return result;
+  }, [tamu, filterMode, filterValue, q]);
+
+  const handleDelete = async (target: { id: string, type: "kunjungan" | "tamu" }) => {
+    try {
+      if (target.type === "kunjungan") {
+        await supabase.from('kunjungan').delete().eq('id', target.id);
+        setKunjungan((prev) => prev.filter((x) => x.id !== target.id));
+      } else {
+        await supabase.from('tamu').delete().eq('id', target.id);
+        setTamu((prev) => prev.filter((x) => x.id !== target.id));
+      }
+      setConfirmDelete(null);
+      toast.success("Riwayat dihapus");
+    } catch (error) {
+      toast.error("Gagal menghapus riwayat");
+    }
+  };
 
   const exportExcel = () => {
-    if (kunjungan.length === 0) return toast.error("Tidak ada data untuk diexport");
-    const rows = filtered.map((k, i) => ({
-      No: i + 1,
-      Tanggal: formatTanggalID(k.tanggal),
-      Jam: k.jam,
-      "Nama Klien": k.namaKlien,
-      Status: k.statusProgram,
-      Petugas: k.petugas,
-      Catatan: k.catatan ?? "",
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
+    if (filteredWajibLapor.length === 0 && filteredTamu.length === 0) {
+      return toast.error("Tidak ada data untuk diexport pada filter ini");
+    }
+    
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Riwayat");
-    XLSX.writeFile(wb, `riwayat-wajib-lapor-${today}.xlsx`);
-    toast.success("Riwayat berhasil diexport");
+
+    if (filteredWajibLapor.length > 0) {
+      const wlRows = filteredWajibLapor.map((item, i) => ({
+        "No": i + 1,
+        "Nama Klien": item.namaKlien,
+        "Tanggal Lahir": item.tanggalLahir,
+        "Jenis Kelamin": item.jenisKelamin,
+        "Alamat": item.alamat,
+        "Status Program": item.statusProgram,
+        "Pasal": item.pasal,
+        "Asal Instansi": item.asalInstansi,
+        "Tanggal Lapor": item.tanggalLapor,
+        "Tanggal Kembali": item.tanggalKembali,
+        "Nama Pembimbing Kemasyarakatan": item.pembimbing,
+      }));
+      const wsWl = XLSX.utils.json_to_sheet(wlRows);
+      XLSX.utils.book_append_sheet(wb, wsWl, "Wajib Lapor");
+    }
+
+    if (filteredTamu.length > 0) {
+      const tamuRows = filteredTamu.map((item) => ({
+        "Tanggal": item.tanggal,
+        "Nama": item.namaTamu,
+        "Alamat Instansi/Lapas/Rutan": item.asalInstansi,
+        "Alamat Rumah": item.alamat,
+        "Keperluan": item.keperluan,
+      }));
+      const wsTamu = XLSX.utils.json_to_sheet(tamuRows);
+      XLSX.utils.book_append_sheet(wb, wsTamu, "Buku Tamu");
+    }
+
+    const fileName = `Riwayat-SIPADU-${filterMode}-${filterValue || "Keseluruhan"}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    toast.success("File Excel berhasil diunduh");
   };
+
+  // Menghitung statistik dinamis
+  const statAnak = filteredWajibLapor.filter((i) => i.kategori === 'anak').length;
+  const statDewasa = filteredWajibLapor.filter((i) => i.kategori === 'dewasa').length;
+  const statTamu = filteredTamu.length;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Toaster position="top-right" richColors closeButton />
       <Header />
-      <main className="flex-1 mx-auto max-w-7xl w-full px-4 sm:px-6 py-5 space-y-5">
-        <section className="bg-card text-card-foreground rounded-xl border border-border shadow-card">
-          <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold flex items-center gap-2">
-                <UserCheck className="h-5 w-5" /> Catat Kunjungan Wajib Lapor
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Hari ini: <span className="font-medium">{formatTanggalID(now)}</span> · {todayCount} klien sudah melapor
-              </p>
-            </div>
+      
+      <main className="flex-1 mx-auto max-w-[95%] xl:max-w-7xl w-full px-4 sm:px-6 py-5 space-y-6">
+        
+        {/* === FILTER KONTROL ATAS === */}
+        <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <CalendarDays className="h-5 w-5 text-primary" /> Riwayat Aktivitas
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">Pemantauan Wajib Lapor & Buku Tamu Terpadu.</p>
           </div>
-
-          <form
-            className="p-5 grid grid-cols-1 md:grid-cols-4 gap-3"
-            onSubmit={(e) => { e.preventDefault(); submit(); }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.target as HTMLElement).tagName !== "TEXTAREA") {
-                e.preventDefault();
-                const focusables = Array.from(
-                  (e.currentTarget as HTMLFormElement).querySelectorAll<HTMLElement>("input, select, textarea, button[type='submit']"),
-                );
-                const idx = focusables.indexOf(e.target as HTMLElement);
-                if (idx >= 0 && idx < focusables.length - 1) focusables[idx + 1].focus();
-                else submit();
-              }
-            }}
-          >
-            <Field label="Tanggal Lapor">
-              <input type="date" className="input" value={tanggal} onChange={(e) => setTanggal(e.target.value)} />
-            </Field>
-            <Field label="Klien" className="md:col-span-2">
-              <select ref={klienRef} className="input" value={klienId} onChange={(e) => setKlienId(e.target.value)}>
-                <option value="">— Pilih klien —</option>
-                {laporan.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.namaKlien} ({l.statusProgram}) · {l.pasal}
-                  </option>
-                ))}
+          
+          <div className="flex flex-col md:flex-row items-center gap-3">
+            <div className="relative w-full md:w-auto">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <select 
+                value={filterMode} 
+                onChange={(e) => handleFilterModeChange(e.target.value as FilterMode)}
+                className="h-10 pl-9 pr-8 w-full md:w-auto rounded-md border border-input bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring/30 appearance-none cursor-pointer"
+              >
+                <option value="harian">Harian</option>
+                <option value="bulanan">Bulanan</option>
+                <option value="tahunan">Tahunan</option>
+                <option value="semua">Keseluruhan</option>
               </select>
-            </Field>
-            <Field label="Petugas">
-              <input className="input" value={petugas} onChange={(e) => setPetugas(e.target.value)} placeholder="Nama petugas" />
-            </Field>
-            <Field label="Catatan (opsional)" className="md:col-span-3">
-              <input className="input" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Keterangan tambahan" />
-            </Field>
-            <div className="flex items-end">
-              <button type="submit"
-                className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground px-4 h-10 text-sm font-medium hover:opacity-90">
-                <Check className="h-4 w-4" /> Catat
-              </button>
             </div>
-          </form>
 
-          {laporan.length === 0 && (
-            <div className="px-5 pb-5 -mt-2">
-              <div className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
-                Belum ada data klien. Tambahkan terlebih dahulu di halaman Input Lapor.
-              </div>
+            {filterMode !== "semua" && (
+              <input 
+                type={filterMode === "harian" ? "date" : filterMode === "bulanan" ? "month" : "number"}
+                placeholder={filterMode === "tahunan" ? "Tahun (contoh: 2024)" : ""}
+                value={filterValue} 
+                onChange={(e) => setFilterValue(e.target.value)} 
+                className="h-10 px-3 w-full md:w-44 rounded-md border border-input bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring"
+              />
+            )}
+
+            <div className="relative flex-1 w-full md:w-56">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari data..."
+                className="h-10 pl-9 pr-3 w-full rounded-md border border-input bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring" />
             </div>
-          )}
 
-          <style>{`
-            .input{width:100%;height:2.5rem;padding:0 .75rem;border-radius:.5rem;border:1px solid var(--color-input);background:var(--color-card);color:var(--color-card-foreground);font-size:.9rem;outline:none;transition:border-color .15s,box-shadow .15s}
-            .input:focus{border-color:var(--color-ring);box-shadow:0 0 0 3px color-mix(in oklab,var(--color-ring) 20%,transparent)}
-          `}</style>
-        </section>
+            <button onClick={exportExcel}
+              className="w-full md:w-auto inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md border border-border bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-colors">
+              <Download className="h-4 w-4" /> Export Excel
+            </button>
+          </div>
+        </div>
 
-        <section className="bg-card text-card-foreground rounded-xl border border-border shadow-card">
-          <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold flex items-center gap-2">
-                <CalendarDays className="h-5 w-5" /> Riwayat Wajib Lapor Harian
-              </h2>
-              <p className="text-xs text-muted-foreground">Total {kunjungan.length} kunjungan tercatat</p>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari klien atau petugas..."
-                  className="h-10 pl-9 pr-3 rounded-md border border-input bg-card text-sm w-64 focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring" />
-              </div>
-              <button onClick={exportExcel}
-                className="inline-flex items-center gap-2 h-10 px-3 rounded-md border border-border bg-card text-sm hover:bg-accent">
-                <Download className="h-4 w-4" /> Export Excel
-              </button>
+        {/* === KARTU STATISTIK RINGKASAN === */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatCard 
+            title="Total Wajib Lapor Anak" 
+            value={statAnak} 
+            icon={<Baby className="h-6 w-6" />} 
+            colorClass="bg-amber-500/15 text-amber-700 dark:text-amber-300" 
+          />
+          <StatCard 
+            title="Total Wajib Lapor Dewasa" 
+            value={statDewasa} 
+            icon={<UserPlus className="h-6 w-6" />} 
+            colorClass="bg-primary/15 text-primary" 
+          />
+          <StatCard 
+            title="Total Buku Tamu" 
+            value={statTamu} 
+            icon={<Users className="h-6 w-6" />} 
+            colorClass="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" 
+          />
+        </div>
+
+        {/* === TABEL 1: WAJIB LAPOR === */}
+        <section className="bg-card text-card-foreground rounded-xl border border-border shadow-card overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3 bg-muted/10">
+            <h3 className="text-base font-semibold flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-emerald-600" /> 
+              Tabel Wajib Lapor
+            </h3>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Kategori:</span>
+              <select 
+                value={kategoriFilter} 
+                onChange={(e) => setKategoriFilter(e.target.value)}
+                className="h-8 px-2 rounded-md border border-input bg-card text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring/30 cursor-pointer"
+              >
+                <option value="Semua">Semua</option>
+                <option value="Anak">Anak Saja</option>
+                <option value="Dewasa">Dewasa Saja</option>
+              </select>
+              <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">{filteredWajibLapor.length} Data</span>
             </div>
           </div>
 
-          {grouped.length === 0 ? (
-            <div className="py-16 flex flex-col items-center gap-2 text-muted-foreground">
-              <Inbox className="h-10 w-10 opacity-50" />
-              <p className="text-sm">{q ? "Tidak ada hasil pencarian." : "Belum ada riwayat kunjungan."}</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {grouped.map(([tgl, list]) => (
-                <div key={tgl} className="p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold">{formatTanggalID(tgl)}</h3>
-                    <span className="text-xs text-muted-foreground">{list.length} klien</span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
-                        <tr>
-                          <th className="px-3 py-2 text-left w-20">Jam</th>
-                          <th className="px-3 py-2 text-left">Nama Klien</th>
-                          <th className="px-3 py-2 text-left w-20">Status</th>
-                          <th className="px-3 py-2 text-left">Petugas</th>
-                          <th className="px-3 py-2 text-left">Catatan</th>
-                          <th className="px-3 py-2 text-center w-16">Aksi</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {list.map((k) => (
-                          <tr key={k.id} className="border-t border-border hover:bg-muted/40">
-                            <td className="px-3 py-2 font-mono">{k.jam}</td>
-                            <td className="px-3 py-2 font-medium">{k.namaKlien}</td>
-                            <td className="px-3 py-2">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${
-                                k.statusProgram === "PB"
-                                  ? "bg-primary/10 text-primary border-primary/30"
-                                  : "bg-warning/20 text-warning-foreground border-warning/40"
-                              }`}>{k.statusProgram}</span>
-                            </td>
-                            <td className="px-3 py-2">{k.petugas}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{k.catatan ?? "-"}</td>
-                            <td className="px-3 py-2 text-center">
-                              <button onClick={() => setConfirmId(k.id)}
-                                className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-border text-destructive hover:bg-destructive/10">
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="overflow-x-auto">
+            {filteredWajibLapor.length === 0 ? (
+              <EmptyState message="Tidak ada data wajib lapor. (Ubah filter waktu ke 'Keseluruhan' jika data dibuat di hari lain)" />
+            ) : (
+              <table className="w-full text-sm whitespace-nowrap">
+                <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground border-b border-border">
+                  <tr>
+                    <th className="px-4 py-3 text-center">No</th>
+                    <th className="px-4 py-3 text-left">Nama Klien</th>
+                    <th className="px-4 py-3 text-left">Tanggal Lahir</th>
+                    <th className="px-4 py-3 text-left">Jenis Kelamin</th>
+                    <th className="px-4 py-3 text-left">Alamat</th>
+                    <th className="px-4 py-3 text-left">Status Program</th>
+                    <th className="px-4 py-3 text-left">Pasal</th>
+                    <th className="px-4 py-3 text-left">Asal Instansi</th>
+                    <th className="px-4 py-3 text-left">Tanggal Lapor</th>
+                    <th className="px-4 py-3 text-left">Tanggal Kembali</th>
+                    <th className="px-4 py-3 text-left">Nama Pembimbing Kemasyarakatan</th>
+                    <th className="px-4 py-3 text-center sticky right-0 bg-muted/40 shadow-[-4px_0_10px_rgba(0,0,0,0.05)]">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredWajibLapor.map((item, index) => (
+                    <tr key={`${item.type}-${item.id}`} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-2 text-center text-muted-foreground">{index + 1}</td>
+                      <td className="px-4 py-2 font-medium">{item.namaKlien}</td>
+                      <td className="px-4 py-2">{formatTanggalID(item.tanggalLahir)}</td>
+                      <td className="px-4 py-2">{item.jenisKelamin}</td>
+                      <td className="px-4 py-2 max-w-[200px] truncate" title={item.alamat}>{item.alamat}</td>
+                      <td className="px-4 py-2">
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${item.statusProgram === 'PB' ? 'bg-primary/10 text-primary border-primary/30' : 'bg-warning/20 text-warning-foreground border-warning/40'}`}>
+                          {item.statusProgram}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">{item.pasal}</td>
+                      <td className="px-4 py-2">{item.asalInstansi}</td>
+                      <td className="px-4 py-2 font-medium text-emerald-600 dark:text-emerald-400">{formatTanggalID(item.tanggalLapor)}</td>
+                      <td className="px-4 py-2">{formatTanggalID(item.tanggalKembali)}</td>
+                      <td className="px-4 py-2">{item.pembimbing}</td>
+                      <td className="px-4 py-2 text-center sticky right-0 bg-card shadow-[-4px_0_10px_rgba(0,0,0,0.02)]">
+                        {item.type === "laporan" ? (
+                          <span className="text-xs font-medium text-muted-foreground/50 select-none">-</span>
+                        ) : (
+                          <button onClick={() => setConfirmDelete({ id: item.id, type: "kunjungan" })}
+                            className="h-7 w-7 inline-flex items-center justify-center rounded-md text-destructive hover:bg-destructive/10 transition-colors">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </section>
 
-          {confirmId && (
-            <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setConfirmId(null)}>
-              <div className="bg-card text-card-foreground rounded-xl border border-border max-w-sm w-full p-5" onClick={(e) => e.stopPropagation()}>
-                <h3 className="text-base font-semibold">Hapus riwayat?</h3>
-                <p className="text-sm text-muted-foreground mt-1">Data tidak dapat dikembalikan.</p>
-                <div className="mt-4 flex justify-end gap-2">
-                  <button onClick={() => setConfirmId(null)} className="h-9 px-3 rounded-md border border-border text-sm hover:bg-accent">Batal</button>
-                  <button onClick={() => handleDelete(confirmId)} className="h-9 px-3 rounded-md bg-destructive text-destructive-foreground text-sm hover:opacity-90">Hapus</button>
-                </div>
+        {/* === TABEL 2: BUKU TAMU === */}
+        <section className="bg-card text-card-foreground rounded-xl border border-border shadow-card overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-muted/10">
+            <h3 className="text-base font-semibold flex items-center gap-2">
+              <Users className="h-5 w-5 text-amber-600" /> 
+              Tabel Buku Tamu
+            </h3>
+            <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded">{filteredTamu.length} Data</span>
+          </div>
+
+          <div className="overflow-x-auto">
+            {filteredTamu.length === 0 ? (
+              <EmptyState message="Tidak ada data buku tamu pada pilihan filter waktu ini." />
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground border-b border-border">
+                  <tr>
+                    <th className="px-5 py-3 text-left">Tanggal</th>
+                    <th className="px-5 py-3 text-left">Nama</th>
+                    <th className="px-5 py-3 text-left">Alamat Instansi/Lapas/Rutan</th>
+                    <th className="px-5 py-3 text-left">Alamat Rumah</th>
+                    <th className="px-5 py-3 text-left">Keperluan</th>
+                    <th className="px-5 py-3 text-center w-16">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredTamu.map((item) => (
+                    <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-5 py-3 align-top font-medium whitespace-nowrap">{formatTanggalID(item.tanggal)}</td>
+                      <td className="px-5 py-3 align-top font-medium">{item.namaTamu}</td>
+                      <td className="px-5 py-3 align-top">{item.asalInstansi}</td>
+                      <td className="px-5 py-3 align-top">{item.alamat}</td>
+                      <td className="px-5 py-3 align-top text-muted-foreground">{item.keperluan}</td>
+                      <td className="px-5 py-3 align-top text-center">
+                        <button onClick={() => setConfirmDelete({ id: item.id, type: "tamu" })}
+                          className="h-7 w-7 inline-flex items-center justify-center rounded-md text-destructive hover:bg-destructive/10 transition-colors">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </section>
+
+        {/* Modal Konfirmasi Hapus */}
+        {confirmDelete && (
+          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setConfirmDelete(null)}>
+            <div className="bg-card text-card-foreground rounded-xl border border-border max-w-sm w-full p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold tracking-tight">Hapus Baris Riwayat?</h3>
+              <p className="text-sm text-muted-foreground mt-2 leading-relaxed">Data riwayat ini akan dihapus secara permanen dari database.</p>
+              <div className="mt-6 flex justify-end gap-3">
+                <button onClick={() => setConfirmDelete(null)} className="h-10 px-4 rounded-md border border-border text-sm font-medium hover:bg-muted transition-colors">Batal</button>
+                <button onClick={() => handleDelete(confirmDelete)} className="h-10 px-4 rounded-md bg-destructive text-destructive-foreground text-sm font-medium hover:opacity-90 transition-opacity">Hapus Permanen</button>
               </div>
             </div>
-          )}
-        </section>
+          </div>
+        )}
+
       </main>
-      <footer className="border-t border-border py-3 text-center text-xs text-muted-foreground">
+      <footer className="border-t border-border py-4 text-center text-xs text-muted-foreground mt-auto">
         SIPADU · Sistem Informasi Pelayanan dan Buku Tamu Terpadu
       </footer>
     </div>
   );
 }
 
-function Field({ label, className = "", children }: { label: string; className?: string; children: React.ReactNode }) {
+// Komponen Helper untuk Card Statistik
+function StatCard({ title, value, icon, colorClass }: { title: string; value: number; icon: React.ReactNode; colorClass: string }) {
   return (
-    <label className={`flex flex-col gap-1.5 ${className}`}>
-      <span className="text-xs font-medium text-foreground/80">{label}</span>
-      {children}
-    </label>
+    <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm p-5 flex items-center gap-4">
+      <div className={`h-12 w-12 rounded-xl flex items-center justify-center shrink-0 ${colorClass}`}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-sm font-medium text-muted-foreground">{title}</p>
+        <h4 className="text-2xl font-bold mt-0.5">{value} <span className="text-sm font-normal text-muted-foreground ml-0.5">Orang</span></h4>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="py-16 flex flex-col items-center gap-3 text-muted-foreground bg-card">
+      <Inbox className="h-10 w-10 opacity-30" />
+      <p className="text-sm">{message}</p>
+    </div>
   );
 }
