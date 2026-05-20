@@ -14,7 +14,140 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      kunjungan: {
+        Row: {
+          catatan: string | null
+          created_at: string
+          id: string
+          jam: string
+          laporan_id: string
+          petugas: string
+          tanggal: string
+        }
+        Insert: {
+          catatan?: string | null
+          created_at?: string
+          id?: string
+          jam?: string
+          laporan_id: string
+          petugas: string
+          tanggal?: string
+        }
+        Update: {
+          catatan?: string | null
+          created_at?: string
+          id?: string
+          jam?: string
+          laporan_id?: string
+          petugas?: string
+          tanggal?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kunjungan_laporan_id_fkey"
+            columns: ["laporan_id"]
+            isOneToOne: false
+            referencedRelation: "laporan"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      laporan: {
+        Row: {
+          alamat: string
+          asal_instansi: string
+          created_at: string
+          geo_accuracy: number | null
+          geo_captured_at: string | null
+          id: string
+          jenis_kelamin: Database["public"]["Enums"]["jenis_kelamin"]
+          kategori: Database["public"]["Enums"]["kategori_lapor"]
+          latitude: number | null
+          longitude: number | null
+          nama_klien: string
+          pasal: string
+          pembimbing: string
+          status_program: Database["public"]["Enums"]["status_program"]
+          tanggal_kembali: string
+          tanggal_lahir: string
+          tanggal_lapor: string
+          updated_at: string
+        }
+        Insert: {
+          alamat: string
+          asal_instansi: string
+          created_at?: string
+          geo_accuracy?: number | null
+          geo_captured_at?: string | null
+          id?: string
+          jenis_kelamin: Database["public"]["Enums"]["jenis_kelamin"]
+          kategori: Database["public"]["Enums"]["kategori_lapor"]
+          latitude?: number | null
+          longitude?: number | null
+          nama_klien: string
+          pasal: string
+          pembimbing: string
+          status_program: Database["public"]["Enums"]["status_program"]
+          tanggal_kembali: string
+          tanggal_lahir: string
+          tanggal_lapor?: string
+          updated_at?: string
+        }
+        Update: {
+          alamat?: string
+          asal_instansi?: string
+          created_at?: string
+          geo_accuracy?: number | null
+          geo_captured_at?: string | null
+          id?: string
+          jenis_kelamin?: Database["public"]["Enums"]["jenis_kelamin"]
+          kategori?: Database["public"]["Enums"]["kategori_lapor"]
+          latitude?: number | null
+          longitude?: number | null
+          nama_klien?: string
+          pasal?: string
+          pembimbing?: string
+          status_program?: Database["public"]["Enums"]["status_program"]
+          tanggal_kembali?: string
+          tanggal_lahir?: string
+          tanggal_lapor?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tamu: {
+        Row: {
+          alamat: string
+          asal_instansi: string
+          created_at: string
+          id: string
+          jam: string
+          keperluan: string
+          nama_tamu: string
+          tanggal: string
+        }
+        Insert: {
+          alamat: string
+          asal_instansi: string
+          created_at?: string
+          id?: string
+          jam?: string
+          keperluan: string
+          nama_tamu: string
+          tanggal?: string
+        }
+        Update: {
+          alamat?: string
+          asal_instansi?: string
+          created_at?: string
+          id?: string
+          jam?: string
+          keperluan?: string
+          nama_tamu?: string
+          tanggal?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +156,9 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      jenis_kelamin: "Laki-laki" | "Perempuan"
+      kategori_lapor: "anak" | "dewasa"
+      status_program: "PB" | "CB"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +285,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      jenis_kelamin: ["Laki-laki", "Perempuan"],
+      kategori_lapor: ["anak", "dewasa"],
+      status_program: ["PB", "CB"],
+    },
   },
 } as const
